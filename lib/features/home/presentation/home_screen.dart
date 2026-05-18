@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -20,31 +21,162 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  late Future<List<WorkoutRecord>> _recordsFuture;
+  static const int _recordsPageSize = 20;
+
+  final ScrollController _recordsScrollController = ScrollController();
+  final List<WorkoutRecord> _records = [];
+  late Future<_HomeSummary> _homeSummaryFuture;
   late Future<double?> _bodyWeightKgFuture;
   DateTime? _focusedWorkoutDate;
   int _focusRequestId = 0;
+  bool _isInitialRecordsLoading = true;
+  bool _isLoadingMoreRecords = false;
+  bool _hasMoreRecords = true;
+  Object? _recordsLoadError;
 
   @override
   void initState() {
     super.initState();
-    _recordsFuture = _loadRecords();
+    _recordsScrollController.addListener(_onRecordsScroll);
+    _homeSummaryFuture = _loadHomeSummary();
     _bodyWeightKgFuture = ref
         .read(userProfileServiceProvider)
         .getBodyWeightKg();
+    _loadInitialRecords();
   }
 
-  Future<List<WorkoutRecord>> _loadRecords() {
-    return ref.read(workoutServiceProvider).getWorkoutRecords();
+  @override
+  void dispose() {
+    _recordsScrollController
+      ..removeListener(_onRecordsScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  Future<List<WorkoutRecord>> _loadRecordsPage({
+    DateTime? beforeDate,
+    int? beforeSessionId,
+  }) {
+    return ref
+        .read(workoutServiceProvider)
+        .getWorkoutRecords(
+          limit: _recordsPageSize + 1,
+          beforeDate: beforeDate,
+          beforeSessionId: beforeSessionId,
+        );
+  }
+
+  Future<_HomeSummary> _loadHomeSummary() async {
+    final today = DateTime.now();
+    final weekStart = DateTime(
+      today.year,
+      today.month,
+      today.day,
+    ).subtract(Duration(days: today.weekday - DateTime.monday));
+    final weekEnd = weekStart.add(const Duration(days: 7));
+    final monthStart = DateTime(today.year, today.month);
+    final monthEnd = DateTime(today.year, today.month + 1);
+    final service = ref.read(workoutServiceProvider);
+
+    final results = await Future.wait<Object>([
+      service.getWorkoutRecords(from: weekStart, to: weekEnd),
+      service.getWorkoutRecords(from: monthStart, to: monthEnd),
+      service.getWorkoutSetCount(),
+    ]);
+
+    return _HomeSummary(
+      weeklyRecords: results[0] as List<WorkoutRecord>,
+      monthlyRecords: results[1] as List<WorkoutRecord>,
+      totalSetCount: results[2] as int,
+    );
+  }
+
+  Future<void> _loadInitialRecords() async {
+    setState(() {
+      _homeSummaryFuture = _loadHomeSummary();
+      _isInitialRecordsLoading = true;
+      _isLoadingMoreRecords = false;
+      _hasMoreRecords = true;
+      _recordsLoadError = null;
+      _records.clear();
+    });
+
+    try {
+      final page = await _loadRecordsPage();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _records
+          ..clear()
+          ..addAll(page.take(_recordsPageSize));
+        _hasMoreRecords = page.length > _recordsPageSize;
+        _isInitialRecordsLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _recordsLoadError = error;
+        _isInitialRecordsLoading = false;
+      });
+    }
   }
 
   void _refreshRecords() {
     if (!mounted) {
       return;
     }
+    _loadInitialRecords();
+  }
+
+  Future<void> _loadMoreRecords() async {
+    if (_isInitialRecordsLoading ||
+        _isLoadingMoreRecords ||
+        !_hasMoreRecords ||
+        _records.isEmpty) {
+      return;
+    }
+
+    final lastRecord = _records.last;
     setState(() {
-      _recordsFuture = _loadRecords();
+      _isLoadingMoreRecords = true;
+      _recordsLoadError = null;
     });
+
+    try {
+      final page = await _loadRecordsPage(
+        beforeDate: lastRecord.session.workoutDate,
+        beforeSessionId: lastRecord.session.id,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _records.addAll(page.take(_recordsPageSize));
+        _hasMoreRecords = page.length > _recordsPageSize;
+        _isLoadingMoreRecords = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _recordsLoadError = error;
+        _isLoadingMoreRecords = false;
+      });
+    }
+  }
+
+  void _onRecordsScroll() {
+    if (!_recordsScrollController.hasClients) {
+      return;
+    }
+    final position = _recordsScrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 320) {
+      _loadMoreRecords();
+    }
   }
 
   Future<void> _openAddWorkout() async {
@@ -59,8 +191,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _focusWorkoutDate(DateTime date) {
+    _focusWorkoutDateAfterLoading(date);
+  }
+
+  Future<void> _focusWorkoutDateAfterLoading(DateTime date) async {
+    final targetDate = DateTime(date.year, date.month, date.day);
+    while (_hasMoreRecords &&
+        !_records.any(
+          (record) => _isSameDay(record.session.workoutDate, targetDate),
+        )) {
+      final lastRecord = _records.isEmpty ? null : _records.last;
+      if (lastRecord != null &&
+          lastRecord.session.workoutDate.isBefore(targetDate)) {
+        break;
+      }
+      await _loadMoreRecords();
+      if (_recordsLoadError != null) {
+        break;
+      }
+    }
+    if (!mounted) {
+      return;
+    }
     setState(() {
-      _focusedWorkoutDate = DateTime(date.year, date.month, date.day);
+      _focusedWorkoutDate = targetDate;
       _focusRequestId += 1;
     });
   }
@@ -153,66 +307,69 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: const Text('근육 성장 일기'),
-        actions: [
-          IconButton(
-            onPressed: _openProfileSettings,
-            icon: const Icon(Icons.person_outline),
-            tooltip: '설정/프로필',
-          ),
-          IconButton(
-            onPressed: _openStats,
-            icon: const Icon(Icons.bar_chart),
-            tooltip: '통계',
-          ),
-        ],
-      ),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        child: FutureBuilder<List<WorkoutRecord>>(
-          future: _recordsFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(
+        child: _isInitialRecordsLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _recordsLoadError != null && _records.isEmpty
+            ? Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Text('기록을 불러오지 못했습니다: ${snapshot.error}'),
+                  child: Text('기록을 불러오지 못했습니다: $_recordsLoadError'),
                 ),
-              );
-            }
-            final records = snapshot.data ?? const [];
-            return Column(
-              children: [
-                _WeeklyBodyPartSummary(
-                  records: records,
-                  onDateTap: _focusWorkoutDate,
-                ),
-                Expanded(
-                  child: records.isEmpty
-                      ? const _EmptyRecordsState()
-                      : FutureBuilder<double?>(
-                          future: _bodyWeightKgFuture,
-                          builder: (context, weightSnapshot) =>
-                              _WorkoutRecordList(
-                                records: records,
-                                bodyWeightKg: weightSnapshot.data ?? 70,
-                                usesDefaultBodyWeight:
-                                    weightSnapshot.data == null,
-                                focusedDate: _focusedWorkoutDate,
-                                focusRequestId: _focusRequestId,
-                                onRecordTap: _openEditWorkout,
-                                onRecordDelete: _confirmDeleteWorkout,
-                              ),
-                        ),
-                ),
-              ],
-            );
-          },
-        ),
+              )
+            : Column(
+                children: [
+                  FutureBuilder<_HomeSummary>(
+                    future: _homeSummaryFuture,
+                    builder: (context, summarySnapshot) {
+                      final summary = summarySnapshot.data;
+                      final weeklyRecords =
+                          summary?.weeklyRecords ?? const <WorkoutRecord>[];
+                      final monthlyRecords =
+                          summary?.monthlyRecords ?? const <WorkoutRecord>[];
+                      return Column(
+                        children: [
+                          _HomeHero(
+                            records: weeklyRecords,
+                            totalSetCount: summary?.totalSetCount ?? 0,
+                            onProfileTap: _openProfileSettings,
+                            onStatsTap: _openStats,
+                          ),
+                          _WeeklyBodyPartSummary(
+                            records: weeklyRecords,
+                            monthlyRecords: monthlyRecords,
+                            onDateTap: _focusWorkoutDate,
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  Expanded(
+                    child: _records.isEmpty
+                        ? const _EmptyRecordsState()
+                        : FutureBuilder<double?>(
+                            future: _bodyWeightKgFuture,
+                            builder: (context, weightSnapshot) =>
+                                _WorkoutRecordList(
+                                  records: _records,
+                                  scrollController: _recordsScrollController,
+                                  isLoadingMore: _isLoadingMoreRecords,
+                                  hasMoreRecords: _hasMoreRecords,
+                                  loadMoreError: _recordsLoadError,
+                                  onLoadMoreRetry: _loadMoreRecords,
+                                  bodyWeightKg: weightSnapshot.data ?? 70,
+                                  usesDefaultBodyWeight:
+                                      weightSnapshot.data == null,
+                                  focusedDate: _focusedWorkoutDate,
+                                  focusRequestId: _focusRequestId,
+                                  onRecordTap: _openEditWorkout,
+                                  onRecordDelete: _confirmDeleteWorkout,
+                                ),
+                          ),
+                  ),
+                ],
+              ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openAddWorkout,
@@ -223,17 +380,292 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
+class _HomeSummary {
+  const _HomeSummary({
+    required this.weeklyRecords,
+    required this.monthlyRecords,
+    required this.totalSetCount,
+  });
+
+  final List<WorkoutRecord> weeklyRecords;
+  final List<WorkoutRecord> monthlyRecords;
+  final int totalSetCount;
+}
+
+class _HomeHero extends StatelessWidget {
+  const _HomeHero({
+    required this.records,
+    required this.totalSetCount,
+    required this.onProfileTap,
+    required this.onStatsTap,
+  });
+
+  final List<WorkoutRecord> records;
+  final int totalSetCount;
+  final VoidCallback onProfileTap;
+  final VoidCallback onStatsTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final today = DateTime.now();
+    final weekStart = DateTime(
+      today.year,
+      today.month,
+      today.day,
+    ).subtract(Duration(days: today.weekday - DateTime.monday));
+    final weekEnd = weekStart.add(const Duration(days: 7));
+    var weeklySessionCount = 0;
+    var weeklyVolume = 0.0;
+
+    for (final record in records) {
+      final workoutDate = DateTime(
+        record.session.workoutDate.year,
+        record.session.workoutDate.month,
+        record.session.workoutDate.day,
+      );
+      if (!workoutDate.isBefore(weekStart) && workoutDate.isBefore(weekEnd)) {
+        weeklySessionCount += 1;
+      }
+      for (final entry in record.entries) {
+        if (!workoutDate.isBefore(weekStart) && workoutDate.isBefore(weekEnd)) {
+          weeklyVolume += entry.sets.fold<double>(
+            0,
+            (sum, set) => sum + set.weight * set.reps,
+          );
+        }
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF111827), Color(0xFF1D4ED8)],
+          ),
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF1D4ED8).withValues(alpha: 0.18),
+              blurRadius: 28,
+              offset: const Offset(0, 14),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.16),
+                    ),
+                  ),
+                  child: const Text(
+                    'Muscle Diary',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                _HeroIconButton(
+                  icon: Icons.bar_chart_rounded,
+                  tooltip: '통계',
+                  onTap: onStatsTap,
+                ),
+                const SizedBox(width: 8),
+                _HeroIconButton(
+                  icon: Icons.person_outline_rounded,
+                  tooltip: '설정/프로필',
+                  onTap: onProfileTap,
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
+            Text(
+              records.isEmpty ? '첫 성장을 기록해볼까요?' : '오늘도 성장 기록하기',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.6,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              records.isEmpty
+                  ? '운동, 세트, 볼륨을 깔끔하게 쌓아가면 변화가 보입니다.'
+                  : '이번 주 흐름을 확인하고 다음 운동을 이어가세요.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.74),
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                Expanded(
+                  child: _HeroMetric(
+                    label: '이번 주',
+                    value: '$weeklySessionCount회',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _HeroMetric(
+                    label: '주간 볼륨',
+                    value: '${_formatVolume(weeklyVolume)}kg',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _HeroMetric(label: '총 세트', value: '$totalSetCount'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroIconButton extends StatelessWidget {
+  const _HeroIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.12),
+      shape: const CircleBorder(),
+      child: IconButton(
+        onPressed: onTap,
+        icon: Icon(icon, color: Colors.white),
+        tooltip: tooltip,
+      ),
+    );
+  }
+}
+
+class _HeroMetric extends StatelessWidget {
+  const _HeroMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.68),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _EmptyRecordsState extends StatelessWidget {
   const _EmptyRecordsState();
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    final colorScheme = Theme.of(context).colorScheme;
+    return Center(
       child: Padding(
-        padding: EdgeInsets.all(24),
-        child: Text(
-          '아직 운동 기록이 없습니다.\n기록 추가 버튼으로 첫 운동을 남겨 보세요.',
-          textAlign: TextAlign.center,
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: const Color(0xFFE8EEF6)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.10),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.fitness_center_rounded,
+                  color: colorScheme.primary,
+                  size: 30,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                '아직 운동 기록이 없어요',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '오른쪽 아래 기록 추가 버튼으로\n첫 운동을 남겨 보세요.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -243,10 +675,12 @@ class _EmptyRecordsState extends StatelessWidget {
 class _WeeklyBodyPartSummary extends StatelessWidget {
   const _WeeklyBodyPartSummary({
     required this.records,
+    required this.monthlyRecords,
     required this.onDateTap,
   });
 
   final List<WorkoutRecord> records;
+  final List<WorkoutRecord> monthlyRecords;
   final ValueChanged<DateTime> onDateTap;
 
   Future<void> _showMonthlyBodyPartCalendar(BuildContext context) async {
@@ -254,7 +688,8 @@ class _WeeklyBodyPartSummary extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) => _MonthlyBodyPartCalendarSheet(records: records),
+      builder: (context) =>
+          _MonthlyBodyPartCalendarSheet(records: monthlyRecords),
     );
     if (selectedDate != null) {
       onDateTap(selectedDate);
@@ -270,49 +705,71 @@ class _WeeklyBodyPartSummary extends StatelessWidget {
       today.day,
     ).subtract(Duration(days: today.weekday - DateTime.monday));
     final bodyPartsByDay = _bodyPartsByDay(records, weekStart);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '이번 주 운동 부위',
-                  style: Theme.of(context).textTheme.titleLarge,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0xFFE8EEF6)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '이번 주 운동 부위',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '운동한 날을 눌러 기록으로 이동하세요',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              TextButton.icon(
-                key: const ValueKey('monthly-body-part-calendar-button'),
-                onPressed: () => _showMonthlyBodyPartCalendar(context),
-                icon: const Icon(Icons.calendar_month_outlined, size: 18),
-                label: const Text('월간'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 104,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: 7,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final date = weekStart.add(Duration(days: index));
-                final parts = bodyPartsByDay[_dateKey(date)] ?? const [];
-                final isToday = _isSameDay(date, today);
-                return _WeeklyBodyPartDayCard(
-                  date: date,
-                  bodyParts: parts,
-                  isToday: isToday,
-                  onTap: parts.isEmpty ? null : () => onDateTap(date),
-                );
-              },
+                TextButton.icon(
+                  key: const ValueKey('monthly-body-part-calendar-button'),
+                  onPressed: () => _showMonthlyBodyPartCalendar(context),
+                  icon: const Icon(Icons.calendar_month_outlined, size: 18),
+                  label: const Text('월간'),
+                ),
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 112,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: 7,
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  final date = weekStart.add(Duration(days: index));
+                  final parts = bodyPartsByDay[_dateKey(date)] ?? const [];
+                  final isToday = _isSameDay(date, today);
+                  return _WeeklyBodyPartDayCard(
+                    date: date,
+                    bodyParts: parts,
+                    isToday: isToday,
+                    onTap: parts.isEmpty ? null : () => onDateTap(date),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -334,34 +791,52 @@ class _WeeklyBodyPartDayCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final hasWorkout = bodyParts.isNotEmpty;
     final bodyText = bodyParts.isEmpty ? '휴식' : bodyParts.join('\n');
+    final background = isToday
+        ? colorScheme.primary
+        : hasWorkout
+        ? const Color(0xFFF1F7FF)
+        : const Color(0xFFF8FAFC);
+    final foreground = isToday ? Colors.white : colorScheme.onSurface;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         key: ValueKey('weekly-day-${_dateKey(date)}'),
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(20),
         child: Ink(
-          width: 76,
-          padding: const EdgeInsets.all(10),
+          width: 82,
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: isToday ? colorScheme.primaryContainer : colorScheme.surface,
+            color: background,
             border: Border.all(
-              color: isToday ? colorScheme.primary : colorScheme.outlineVariant,
+              color: isToday
+                  ? colorScheme.primary
+                  : hasWorkout
+                  ? const Color(0xFFCFE4FF)
+                  : const Color(0xFFE8EEF6),
             ),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(20),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 _weekdayLabel(date.weekday),
-                style: Theme.of(context).textTheme.labelLarge,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: foreground,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
               Text(
                 DateFormat('M.d').format(date),
-                style: Theme.of(context).textTheme.labelSmall,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: isToday
+                      ? Colors.white.withValues(alpha: 0.72)
+                      : colorScheme.onSurfaceVariant,
+                ),
               ),
               const Spacer(),
               Text(
@@ -369,9 +844,13 @@ class _WeeklyBodyPartDayCard extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: bodyParts.isEmpty
+                  color: isToday
+                      ? Colors.white
+                      : bodyParts.isEmpty
                       ? colorScheme.onSurfaceVariant
-                      : colorScheme.onSurface,
+                      : colorScheme.primary,
+                  fontWeight: hasWorkout ? FontWeight.w800 : FontWeight.w500,
+                  height: 1.25,
                 ),
               ),
             ],
@@ -654,6 +1133,11 @@ class _MonthlyBodyPartCalendarDayCell extends StatelessWidget {
 class _WorkoutRecordList extends StatefulWidget {
   const _WorkoutRecordList({
     required this.records,
+    required this.scrollController,
+    required this.isLoadingMore,
+    required this.hasMoreRecords,
+    required this.loadMoreError,
+    required this.onLoadMoreRetry,
     required this.bodyWeightKg,
     required this.usesDefaultBodyWeight,
     required this.focusedDate,
@@ -663,6 +1147,11 @@ class _WorkoutRecordList extends StatefulWidget {
   });
 
   final List<WorkoutRecord> records;
+  final ScrollController scrollController;
+  final bool isLoadingMore;
+  final bool hasMoreRecords;
+  final Object? loadMoreError;
+  final VoidCallback onLoadMoreRetry;
   final double bodyWeightKg;
   final bool usesDefaultBodyWeight;
   final DateTime? focusedDate;
@@ -691,11 +1180,19 @@ class _WorkoutRecordListState extends State<_WorkoutRecordList> {
       if (context == null) {
         return;
       }
-      Scrollable.ensureVisible(
-        context,
+      final renderObject = context.findRenderObject();
+      final viewport = renderObject == null
+          ? null
+          : RenderAbstractViewport.maybeOf(renderObject);
+      if (viewport == null || !widget.scrollController.hasClients) {
+        return;
+      }
+      final position = widget.scrollController.position;
+      final offset = viewport.getOffsetToReveal(renderObject!, 0.02).offset;
+      widget.scrollController.animateTo(
+        offset.clamp(position.minScrollExtent, position.maxScrollExtent),
         duration: const Duration(milliseconds: 350),
         curve: Curves.easeOutCubic,
-        alignment: 0.02,
       );
     });
   }
@@ -704,7 +1201,8 @@ class _WorkoutRecordListState extends State<_WorkoutRecordList> {
   Widget build(BuildContext context) {
     final items = _flattenRecords(widget.records);
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+      controller: widget.scrollController,
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 160),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -717,13 +1215,16 @@ class _WorkoutRecordListState extends State<_WorkoutRecordList> {
                     'record-date-header-${_dateKey(item.date)}',
                   ),
                 ),
-                padding: const EdgeInsets.only(top: 12, bottom: 8),
+                padding: const EdgeInsets.only(top: 16, bottom: 10),
                 child: Text(
                   DateFormat('yyyy.MM.dd').format(item.date),
                   key: ValueKey(
                     'record-date-header-label-${_dateKey(item.date)}',
                   ),
-                  style: Theme.of(context).textTheme.titleMedium,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.2,
+                  ),
                 ),
               ),
               _RecordDateSummaryItem() => _WorkoutDateSummaryCard(
@@ -739,6 +1240,29 @@ class _WorkoutRecordListState extends State<_WorkoutRecordList> {
                 onDelete: () => widget.onRecordDelete(item),
               ),
             },
+          if (widget.isLoadingMore)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (widget.loadMoreError != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: OutlinedButton.icon(
+                onPressed: widget.onLoadMoreRetry,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('기록 더 불러오기'),
+              ),
+            )
+          else if (!widget.hasMoreRecords)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              child: Text(
+                '마지막 기록입니다',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
         ],
       ),
     );
@@ -767,31 +1291,62 @@ class _WorkoutDateSummaryCard extends StatelessWidget {
 
     return Card(
       key: ValueKey('record-date-summary-${_dateKey(item.date)}'),
-      margin: const EdgeInsets.only(bottom: 8),
-      color: colorScheme.surfaceContainerHighest,
+      margin: const EdgeInsets.only(bottom: 10),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              bodyPartsText.isEmpty ? '운동 부위 없음' : bodyPartsText,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(color: colorScheme.onSurface),
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withValues(alpha: 0.10),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.bolt_rounded,
+                    color: colorScheme.primary,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    bodyPartsText.isEmpty ? '운동 부위 없음' : bodyPartsText,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: colorScheme.onSurface,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _MetricTile(
+                    label: '총 볼륨',
+                    value: '${_formatVolume(item.totalVolume)}kg',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _MetricTile(
+                    label: '구성',
+                    value: '${item.entryCount}종목 · ${item.setCount}세트',
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             Text(
-              '총 볼륨 ${_formatVolume(item.totalVolume)}kg',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${item.entryCount}종목 · ${item.setCount}세트 · 예상 ${estimatedCalories.round()}kcal${usesDefaultBodyWeight ? ' · 70kg 기준' : ''}',
+              '예상 ${estimatedCalories.round()}kcal${usesDefaultBodyWeight ? ' · 70kg 기준' : ''}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
@@ -835,65 +1390,163 @@ class _WorkoutRecordCard extends StatelessWidget {
     );
     final memoSummary = _memoSummary(entry.entry.memo ?? item.sessionMemo);
 
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 10),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(24),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F7FF),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      Icons.fitness_center_rounded,
+                      color: colorScheme.primary,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           dateText,
-                          style: Theme.of(context).textTheme.labelMedium,
+                          style: Theme.of(context).textTheme.labelMedium
+                              ?.copyWith(color: colorScheme.onSurfaceVariant),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           entry.exercise.name,
-                          style: Theme.of(context).textTheme.titleMedium,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.2,
+                              ),
                         ),
                       ],
                     ),
                   ),
-                  IconButton(
+                  IconButton.filledTonal(
                     onPressed: onDelete,
-                    icon: const Icon(Icons.delete_outline),
+                    icon: const Icon(Icons.delete_outline_rounded),
                     tooltip: '기록 삭제',
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
+              const SizedBox(height: 14),
+              Row(
                 children: [
-                  _RecordChip(label: entry.bodyPart.name),
-                  _RecordChip(label: '$setCount세트'),
-                  if (warmupSetCount > 0)
-                    _RecordChip(label: '워밍업 $warmupSetCount세트'),
-                  _RecordChip(label: '총 볼륨 ${_formatVolume(totalVolume)}kg'),
-                  _RecordChip(
-                    label:
-                        '예상 ${estimatedCalories.round()}kcal${usesDefaultBodyWeight ? ' · 70kg 기준' : ''}',
+                  Expanded(
+                    child: _MetricTile(
+                      label: '볼륨',
+                      value: '${_formatVolume(totalVolume)}kg',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _MetricTile(label: '세트', value: '$setCount세트'),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _MetricTile(
+                      label: '칼로리',
+                      value: '${estimatedCalories.round()}kcal',
+                    ),
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _RecordChip(label: entry.bodyPart.name),
+                  if (warmupSetCount > 0)
+                    _RecordChip(label: '워밍업 $warmupSetCount세트'),
+                  if (usesDefaultBodyWeight)
+                    const _RecordChip(label: '70kg 기준'),
+                ],
+              ),
               if (memoSummary != null) ...[
-                const SizedBox(height: 8),
-                Text(memoSummary, maxLines: 2, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Text(
+                    memoSummary,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
               ],
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _MetricTile extends StatelessWidget {
+  const _MetricTile({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8EEF6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w900),
+          ),
+        ],
       ),
     );
   }
@@ -906,8 +1559,15 @@ class _RecordChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Chip(
       label: Text(label),
+      labelStyle: TextStyle(
+        color: colorScheme.primary,
+        fontWeight: FontWeight.w800,
+      ),
+      backgroundColor: colorScheme.primary.withValues(alpha: 0.08),
+      side: BorderSide(color: colorScheme.primary.withValues(alpha: 0.14)),
       visualDensity: VisualDensity.compact,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );

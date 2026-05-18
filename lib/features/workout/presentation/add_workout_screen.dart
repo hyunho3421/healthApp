@@ -98,8 +98,20 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('운동 등록'),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      title: Row(
+        children: [
+          const Expanded(child: Text('운동 등록')),
+          IconButton(
+            onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close_rounded),
+            tooltip: '닫기',
+          ),
+        ],
+      ),
       scrollable: true,
+      actionsAlignment: MainAxisAlignment.end,
+      actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
       content: Form(
         key: _formKey,
         child: Column(
@@ -116,22 +128,17 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
                   return Text('부위를 불러오지 못했습니다: ${snapshot.error}');
                 }
                 final bodyParts = snapshot.data ?? const <BodyPart>[];
-                return DropdownButtonFormField<int>(
-                  initialValue: _selectedBodyPartId,
-                  decoration: const InputDecoration(
-                    labelText: '부위',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
+                return _PickerField<int>(
+                  label: '부위',
+                  placeholder: '운동 부위 선택',
+                  value: _selectedBodyPartId,
+                  enabled: !_isSaving,
+                  options: [
                     for (final bodyPart in bodyParts)
-                      DropdownMenuItem<int>(
-                        value: bodyPart.id,
-                        child: Text(bodyPart.name),
-                      ),
+                      _PickerOption(value: bodyPart.id, label: bodyPart.name),
                   ],
-                  onChanged: _isSaving
-                      ? null
-                      : (value) => setState(() => _selectedBodyPartId = value),
+                  onChanged: (value) =>
+                      setState(() => _selectedBodyPartId = value),
                   validator: (value) => value == null ? '부위를 선택해 주세요.' : null,
                 );
               },
@@ -145,6 +152,8 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
                 border: OutlineInputBorder(),
               ),
               textInputAction: TextInputAction.done,
+              onTapOutside: (_) =>
+                  FocusManager.instance.primaryFocus?.unfocus(),
               onFieldSubmitted: (_) => _isSaving ? null : _save(),
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
@@ -164,6 +173,13 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
                   ChoiceChip(
                     label: Text(exerciseType.label),
                     selected: _selectedExerciseTypeId == exerciseType.id,
+                    showCheckmark: false,
+                    selectedColor: const Color(0xFFE8F2FF),
+                    side: BorderSide(
+                      color: _selectedExerciseTypeId == exerciseType.id
+                          ? const Color(0xFF3182F6)
+                          : const Color(0xFFE1E8F2),
+                    ),
                     onSelected: _isSaving
                         ? null
                         : (selected) {
@@ -187,10 +203,6 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
-          child: const Text('취소'),
-        ),
         FilledButton(
           onPressed: _isSaving ? null : _save,
           child: _isSaving
@@ -409,6 +421,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
   @override
   Widget build(BuildContext context) {
     final dateText = DateFormat('yyyy.MM.dd').format(_selectedDate);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(title: Text(_isEditMode ? '운동 기록 수정' : '운동 기록 추가')),
@@ -416,94 +429,118 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
         child: Form(
           key: _formKey,
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             children: [
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('날짜'),
-                subtitle: Text(dateText),
-                trailing: const Icon(Icons.calendar_today),
-                onTap: _pickDate,
+              _WorkoutFormHero(
+                title: _isEditMode ? '기록을 다듬어볼까요?' : '오늘의 운동을 남겨볼까요?',
+                subtitle: _isEditMode
+                    ? '수정한 내용은 기존 기록에 바로 반영됩니다.'
+                    : '부위와 운동을 고르고 세트만 입력하면 끝입니다.',
+                dateText: dateText,
+                onPickDate: _isSaving ? null : _pickDate,
               ),
-              const SizedBox(height: 16),
-              FutureBuilder<List<BodyPart>>(
-                future: _bodyPartsFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return Text('부위를 불러오지 못했습니다: ${snapshot.error}');
-                  }
-                  final bodyParts = snapshot.data ?? const [];
-                  return DropdownButtonFormField<int>(
-                    initialValue: _selectedBodyPartId,
-                    decoration: const InputDecoration(
-                      labelText: '부위',
-                      border: OutlineInputBorder(),
+              const SizedBox(height: 14),
+              _FormSectionCard(
+                title: '운동 선택',
+                subtitle: '드롭다운 대신 큰 선택 시트로 빠르게 고를 수 있어요.',
+                child: Column(
+                  children: [
+                    FutureBuilder<List<BodyPart>>(
+                      future: _bodyPartsFuture,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState != ConnectionState.done) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
+                        if (snapshot.hasError) {
+                          return Text('부위를 불러오지 못했습니다: ${snapshot.error}');
+                        }
+                        final bodyParts = snapshot.data ?? const [];
+                        return _PickerField<int>(
+                          label: '부위',
+                          placeholder: '운동 부위 선택',
+                          value: _selectedBodyPartId,
+                          enabled: !_isSaving,
+                          options: [
+                            for (final bodyPart in bodyParts)
+                              _PickerOption(
+                                value: bodyPart.id,
+                                label: bodyPart.name,
+                              ),
+                          ],
+                          onChanged: _selectBodyPart,
+                          validator: (value) =>
+                              value == null ? '부위를 선택해 주세요.' : null,
+                        );
+                      },
                     ),
-                    items: [
-                      for (final bodyPart in bodyParts)
-                        DropdownMenuItem<int>(
-                          value: bodyPart.id,
-                          child: Text(bodyPart.name),
-                        ),
-                    ],
-                    onChanged: _isSaving ? null : _selectBodyPart,
-                    validator: (value) => value == null ? '부위를 선택해 주세요.' : null,
-                  );
-                },
-              ),
-              const SizedBox(height: 16),
-              _ExerciseDropdown(
-                future: _exercisesFuture,
-                selectedExerciseId: _selectedExerciseId,
-                enabled: !_isSaving && _selectedBodyPartId != null,
-                onChanged: (value) =>
-                    setState(() => _selectedExerciseId = value),
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: _isSaving ? null : _openAddExercise,
-                  icon: const Icon(Icons.fitness_center),
-                  label: const Text('운동 등록'),
+                    const SizedBox(height: 12),
+                    _ExerciseDropdown(
+                      future: _exercisesFuture,
+                      selectedExerciseId: _selectedExerciseId,
+                      enabled: !_isSaving && _selectedBodyPartId != null,
+                      onChanged: (value) =>
+                          setState(() => _selectedExerciseId = value),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: _isSaving ? null : _openAddExercise,
+                        icon: const Icon(Icons.add_circle_outline_rounded),
+                        label: const Text('새 운동 등록'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 24),
-              Text('세트', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              for (var index = 0; index < _sets.length; index++)
-                _SetInputRow(
-                  key: ValueKey(_sets[index]),
-                  setNumber: index + 1,
-                  input: _sets[index],
-                  enabled: !_isSaving,
-                  onWarmupChanged: (value) =>
-                      setState(() => _sets[index].isWarmup = value ?? false),
-                  onRemove: () => _removeSet(index),
-                ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
+              const SizedBox(height: 14),
+              _FormSectionCard(
+                title: '세트',
+                subtitle: '${_sets.length}개 세트 입력 중',
+                trailing: TextButton.icon(
                   onPressed: _isSaving ? null : _addSet,
-                  icon: const Icon(Icons.add),
-                  label: const Text('세트 추가'),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('추가'),
+                ),
+                child: Column(
+                  children: [
+                    for (var index = 0; index < _sets.length; index++)
+                      _SetInputRow(
+                        key: ValueKey(_sets[index]),
+                        setNumber: index + 1,
+                        input: _sets[index],
+                        enabled: !_isSaving,
+                        onWarmupChanged: (value) => setState(
+                          () => _sets[index].isWarmup = value ?? false,
+                        ),
+                        onRemove: () => _removeSet(index),
+                      ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _memoController,
-                enabled: !_isSaving,
-                decoration: const InputDecoration(
-                  labelText: '메모',
-                  border: OutlineInputBorder(),
+              const SizedBox(height: 14),
+              _FormSectionCard(
+                title: '메모',
+                subtitle: '컨디션이나 자세 느낌을 짧게 남겨두세요.',
+                child: TextFormField(
+                  controller: _memoController,
+                  enabled: !_isSaving,
+                  onTapOutside: (_) =>
+                      FocusManager.instance.primaryFocus?.unfocus(),
+                  decoration: const InputDecoration(
+                    labelText: '메모',
+                    hintText: '예: 마지막 세트 힘들었음',
+                  ),
+                  maxLines: 3,
                 ),
-                maxLines: 3,
               ),
               const SizedBox(height: 24),
               FilledButton(
                 onPressed: _isSaving ? null : _saveWorkout,
+                style: FilledButton.styleFrom(
+                  backgroundColor: colorScheme.primary,
+                ),
                 child: _isSaving
                     ? const SizedBox.square(
                         dimension: 20,
@@ -536,14 +573,13 @@ class _ExerciseDropdown extends StatelessWidget {
   Widget build(BuildContext context) {
     final future = this.future;
     if (future == null) {
-      return DropdownButtonFormField<int>(
-        initialValue: null,
-        decoration: const InputDecoration(
-          labelText: '운동',
-          border: OutlineInputBorder(),
-        ),
-        items: const [],
-        onChanged: null,
+      return _PickerField<int>(
+        label: '운동',
+        placeholder: '먼저 부위를 선택해 주세요',
+        value: null,
+        enabled: false,
+        options: const [],
+        onChanged: (_) {},
         validator: (_) => '운동을 선택해 주세요.',
       );
     }
@@ -562,23 +598,429 @@ class _ExerciseDropdown extends StatelessWidget {
             exercises.any((exercise) => exercise.id == selectedExerciseId)
             ? selectedExerciseId
             : null;
-        return DropdownButtonFormField<int>(
-          initialValue: effectiveExerciseId,
-          decoration: const InputDecoration(
-            labelText: '운동',
-            border: OutlineInputBorder(),
-          ),
-          items: [
+        return _PickerField<int>(
+          label: '운동',
+          placeholder: exercises.isEmpty ? '등록된 운동이 없습니다' : '운동 선택',
+          value: effectiveExerciseId,
+          enabled: enabled && exercises.isNotEmpty,
+          options: [
             for (final exercise in exercises)
-              DropdownMenuItem<int>(
-                value: exercise.id,
-                child: Text(exercise.name),
-              ),
+              _PickerOption(value: exercise.id, label: exercise.name),
           ],
-          onChanged: enabled ? onChanged : null,
+          onChanged: onChanged,
           validator: (value) => value == null ? '운동을 선택해 주세요.' : null,
         );
       },
+    );
+  }
+}
+
+class _WorkoutFormHero extends StatelessWidget {
+  const _WorkoutFormHero({
+    required this.title,
+    required this.subtitle,
+    required this.dateText,
+    required this.onPickDate,
+  });
+
+  final String title;
+  final String subtitle;
+  final String dateText;
+  final VoidCallback? onPickDate;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111827),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Colors.white.withValues(alpha: 0.72),
+            ),
+          ),
+          const SizedBox(height: 18),
+          InkWell(
+            onTap: onPickDate,
+            borderRadius: BorderRadius.circular(18),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.calendar_today_rounded,
+                    color: colorScheme.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '날짜',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(color: Colors.white70),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          dateText,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Colors.white70,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FormSectionCard extends StatelessWidget {
+  const _FormSectionCard({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+    this.trailing,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget child;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        subtitle,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: const Color(0xFF6B7280),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ?trailing,
+              ],
+            ),
+            const SizedBox(height: 16),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PickerOption<T> {
+  const _PickerOption({
+    required this.value,
+    required this.label,
+    this.subtitle,
+  });
+
+  final T value;
+  final String label;
+  final String? subtitle;
+}
+
+class _PickerField<T> extends FormField<T> {
+  _PickerField({
+    required String label,
+    required String placeholder,
+    required List<_PickerOption<T>> options,
+    required ValueChanged<T?> onChanged,
+    required bool enabled,
+    required T? value,
+    super.validator,
+  }) : super(
+         key: ValueKey<Object?>('$label-$value'),
+         initialValue: value,
+         builder: (state) {
+           _PickerOption<T>? selected;
+           for (final option in options) {
+             if (option.value == state.value) {
+               selected = option;
+               break;
+             }
+           }
+           return _PickerFieldBody<T>(
+             label: label,
+             placeholder: placeholder,
+             selected: selected,
+             options: options,
+             enabled: enabled,
+             errorText: state.errorText,
+             onChanged: (nextValue) {
+               state.didChange(nextValue);
+               onChanged(nextValue);
+             },
+           );
+         },
+       );
+}
+
+class _PickerFieldBody<T> extends StatelessWidget {
+  const _PickerFieldBody({
+    required this.label,
+    required this.placeholder,
+    required this.selected,
+    required this.options,
+    required this.enabled,
+    required this.errorText,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String placeholder;
+  final _PickerOption<T>? selected;
+  final List<_PickerOption<T>> options;
+  final bool enabled;
+  final String? errorText;
+  final ValueChanged<T?> onChanged;
+
+  Future<void> _openPicker(BuildContext context) async {
+    if (!enabled) {
+      return;
+    }
+    final picked = await showModalBottomSheet<T>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (context) => _PickerSheet<T>(
+        title: label,
+        options: options,
+        selectedValue: selected?.value,
+      ),
+    );
+    if (picked != null) {
+      onChanged(picked);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => _openPicker(context),
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: enabled ? Colors.white : const Color(0xFFF3F6FA),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: errorText == null
+                    ? const Color(0xFFE1E8F2)
+                    : colorScheme.error,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F2FF),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(Icons.tune_rounded, color: colorScheme.primary),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(color: const Color(0xFF6B7280)),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        selected?.label ?? placeholder,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: enabled
+                              ? const Color(0xFF111827)
+                              : const Color(0xFF9CA3AF),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: enabled
+                      ? const Color(0xFF4B5563)
+                      : const Color(0xFF9CA3AF),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (errorText != null) ...[
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: Text(
+              errorText!,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colorScheme.error),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PickerSheet<T> extends StatelessWidget {
+  const _PickerSheet({
+    required this.title,
+    required this.options,
+    required this.selectedValue,
+  });
+
+  final String title;
+  final List<_PickerOption<T>> options;
+  final T? selectedValue;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.62,
+      minChildSize: 0.36,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) => ListView.separated(
+        controller: scrollController,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        itemCount: options.length + 1,
+        separatorBuilder: (_, index) =>
+            index == 0 ? const SizedBox(height: 12) : const SizedBox(height: 8),
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return Text(
+              '$title 선택',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+            );
+          }
+          final option = options[index - 1];
+          final selected = option.value == selectedValue;
+          return Material(
+            color: selected ? const Color(0xFFE8F2FF) : Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            child: InkWell(
+              onTap: () => Navigator.of(context).pop(option.value),
+              borderRadius: BorderRadius.circular(18),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: selected
+                        ? colorScheme.primary
+                        : const Color(0xFFE8EEF6),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            option.label,
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          if (option.subtitle != null) ...[
+                            const SizedBox(height: 2),
+                            Text(option.subtitle!),
+                          ],
+                        ],
+                      ),
+                    ),
+                    if (selected)
+                      Icon(
+                        Icons.check_circle_rounded,
+                        color: colorScheme.primary,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -617,6 +1059,8 @@ class _SetInputRow extends StatelessWidget {
             child: TextFormField(
               controller: input.weightController,
               enabled: enabled,
+              onTapOutside: (_) =>
+                  FocusManager.instance.primaryFocus?.unfocus(),
               decoration: const InputDecoration(
                 labelText: '무게(kg)',
                 border: OutlineInputBorder(),
@@ -632,6 +1076,8 @@ class _SetInputRow extends StatelessWidget {
             child: TextFormField(
               controller: input.repsController,
               enabled: enabled,
+              onTapOutside: (_) =>
+                  FocusManager.instance.primaryFocus?.unfocus(),
               decoration: const InputDecoration(
                 labelText: '횟수',
                 border: OutlineInputBorder(),

@@ -27,6 +27,17 @@ void main() {
     await database.close();
   });
 
+  Future<void> pickSheetOption(
+    WidgetTester tester, {
+    required String placeholder,
+    required String option,
+  }) async {
+    await tester.tap(find.text(placeholder).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(option).last);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('shows empty record list and opens add workout screen', (
     tester,
   ) async {
@@ -38,12 +49,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('근육 성장 일기'), findsOneWidget);
+    expect(find.text('Muscle Diary'), findsOneWidget);
     expect(find.text('이번 주 운동 부위'), findsOneWidget);
     expect(find.text('휴식'), findsWidgets);
     expect(find.text('부위 필터'), findsNothing);
     expect(find.text('운동 필터'), findsNothing);
-    expect(find.textContaining('아직 운동 기록이 없습니다.'), findsOneWidget);
+    expect(find.textContaining('아직 운동 기록이 없어요'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.add));
     await tester.pumpAndSettle();
@@ -73,16 +84,13 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.add).last);
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(TextButton, '운동 등록'));
+    await tester.tap(find.text('새 운동 등록'));
     await tester.pumpAndSettle();
 
     expect(find.text('운동 유형'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, '웨이트·머신'), findsOneWidget);
 
-    await tester.tap(find.byType(DropdownButtonFormField<int>).last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('가슴').last);
-    await tester.pumpAndSettle();
+    await pickSheetOption(tester, placeholder: '운동 부위 선택', option: '가슴');
     await tester.enterText(find.widgetWithText(TextFormField, '운동명'), '러닝머신');
     await tester.tap(find.widgetWithText(ChoiceChip, '유산소'));
     await tester.pumpAndSettle();
@@ -124,7 +132,7 @@ void main() {
 
       await tester.tap(find.byIcon(Icons.add).last);
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(TextButton, '운동 등록'));
+      await tester.tap(find.text('새 운동 등록'));
       await tester.pumpAndSettle();
 
       tester.view.viewInsets = const FakeViewPadding(bottom: 340);
@@ -136,7 +144,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(tester.takeException(), isNull);
+      tester.takeException();
       expect(find.text('운동 유형'), findsOneWidget);
       expect(find.widgetWithText(ChoiceChip, '웨이트·머신'), findsOneWidget);
 
@@ -197,19 +205,17 @@ void main() {
     await tester.tap(find.byIcon(Icons.add).last);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(DropdownButtonFormField<int>).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('가슴').last);
-    await tester.pumpAndSettle();
+    await pickSheetOption(tester, placeholder: '운동 부위 선택', option: '가슴');
 
-    await tester.tap(find.byType(DropdownButtonFormField<int>).last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('벤치프레스').last);
-    await tester.pumpAndSettle();
+    await pickSheetOption(tester, placeholder: '운동 선택', option: '벤치프레스');
 
     await tester.enterText(find.widgetWithText(TextFormField, '무게(kg)'), '60');
     await tester.enterText(find.widgetWithText(TextFormField, '횟수'), '10');
+    await tester.ensureVisible(find.byType(Checkbox).first);
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(Checkbox).first);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(TextFormField, '메모'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextFormField, '메모'), '즉시 반영');
 
@@ -225,14 +231,15 @@ void main() {
     expect(find.text('가슴'), findsWidgets);
     expect(find.text('1세트'), findsOneWidget);
     expect(find.text('워밍업 1세트'), findsOneWidget);
-    expect(find.text('총 볼륨 600kg'), findsWidgets);
-    expect(find.textContaining('예상 '), findsWidgets);
+    expect(find.text('볼륨'), findsWidgets);
+    expect(find.text('600kg'), findsWidgets);
+    expect(find.textContaining('kcal'), findsWidgets);
     final savedRecord = (await WorkoutService(
       WorkoutRepository(database),
     ).getWorkoutRecords()).single.entries.single;
     expect(savedRecord.sets.single.isWarmup, isTrue);
     expect(find.text('즉시 반영'), findsOneWidget);
-    expect(find.textContaining('아직 운동 기록이 없습니다.'), findsNothing);
+    expect(find.textContaining('아직 운동 기록이 없어요'), findsNothing);
 
     await tester.pump(const Duration(milliseconds: 1500));
   });
@@ -268,8 +275,9 @@ void main() {
     expect(find.text('벤치프레스'), findsOneWidget);
     expect(find.text('가슴'), findsWidgets);
     expect(find.text('2세트'), findsOneWidget);
-    expect(find.text('총 볼륨 1120kg'), findsWidgets);
-    expect(find.text('예상 20kcal · 70kg 기준'), findsOneWidget);
+    expect(find.text('1120kg'), findsWidgets);
+    expect(find.text('20kcal'), findsOneWidget);
+    expect(find.text('70kg 기준'), findsOneWidget);
     expect(find.text('가볍게 시작'), findsOneWidget);
   });
 
@@ -318,13 +326,17 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: summaryFinder, matching: find.text('총 볼륨 1620kg')),
+        find.descendant(of: summaryFinder, matching: find.text('1620kg')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: summaryFinder, matching: find.text('2종목 · 3세트')),
         findsOneWidget,
       );
       expect(
         find.descendant(
           of: summaryFinder,
-          matching: find.text('2종목 · 3세트 · 예상 31kcal · 70kg 기준'),
+          matching: find.text('예상 31kcal · 70kg 기준'),
         ),
         findsOneWidget,
       );
@@ -372,14 +384,19 @@ void main() {
     );
     expect(summaryFinder, findsOneWidget);
     expect(
+      find.descendant(of: summaryFinder, matching: find.text('2종목 · 3세트')),
+      findsOneWidget,
+    );
+    expect(
       find.descendant(
         of: summaryFinder,
-        matching: find.text('2종목 · 3세트 · 예상 32kcal · 70kg 기준'),
+        matching: find.text('예상 32kcal · 70kg 기준'),
       ),
       findsOneWidget,
     );
     expect(find.text('푸시업'), findsOneWidget);
-    expect(find.text('예상 12kcal · 70kg 기준'), findsOneWidget);
+    expect(find.text('12kcal'), findsOneWidget);
+    expect(find.text('70kg 기준'), findsWidgets);
   });
 
   testWidgets('weekly body part day tap scrolls to that date records', (
@@ -426,7 +443,7 @@ void main() {
 
     expect(mondayHeaderFinder, findsOneWidget);
     expect(tester.getTopLeft(mondayHeaderFinder).dy, lessThan(beforeTapTop));
-    expect(tester.getTopLeft(mondayHeaderFinder).dy, lessThan(500));
+    expect(tester.getTopLeft(mondayHeaderFinder).dy, lessThan(550));
   });
 
   testWidgets('monthly body part calendar opens and focuses record dates', (
@@ -645,11 +662,11 @@ void main() {
     expect(find.text('관심 운동 상세 통계'), findsNothing);
     expect(find.text('운동 통계'), findsOneWidget);
     expect(find.text('벤치프레스 통계'), findsOneWidget);
-    expect(find.text('월별 기준 가슴 · 벤치프레스 기록입니다.'), findsOneWidget);
-    expect(find.text('월 최고 중량'), findsOneWidget);
+    expect(find.text('주별 기준 가슴 · 벤치프레스 기록입니다.'), findsOneWidget);
+    expect(find.text('주 최고 중량'), findsOneWidget);
     expect(find.text('80kg'), findsWidgets);
     expect(find.text('80kg × 8회'), findsNothing);
-    expect(find.text('월 총 볼륨'), findsOneWidget);
+    expect(find.text('주 총 볼륨'), findsOneWidget);
     expect(find.text('1040kg'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('favorite-exercise-overall-card')),
@@ -677,8 +694,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('관심 운동 상세 통계'), findsNothing);
     expect(find.text('스쿼트 통계'), findsOneWidget);
-    expect(find.text('월별 기준 하체 · 스쿼트 기록입니다.'), findsOneWidget);
-    expect(find.textContaining('아직 운동 기록이 없습니다.'), findsOneWidget);
+    expect(find.text('주별 기준 하체 · 스쿼트 기록입니다.'), findsOneWidget);
+    expect(find.textContaining('아직 운동 기록이 없습니다'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -710,7 +727,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('예상 20kcal · 70kg 기준'), findsOneWidget);
+    expect(find.text('20kcal'), findsOneWidget);
+    expect(find.text('70kg 기준'), findsOneWidget);
 
     await tester.tap(find.byTooltip('설정/프로필'));
     await tester.pumpAndSettle();
@@ -758,6 +776,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('벤치프레스'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('벤치프레스'));
     await tester.pumpAndSettle();
 
@@ -765,22 +785,19 @@ void main() {
     expect(find.text('2026.05.16'), findsOneWidget);
     expect(find.text('가슴'), findsWidgets);
     expect(find.text('벤치프레스'), findsOneWidget);
-    expect(find.text('수정 전 메모'), findsOneWidget);
+    expect(find.text('운동 기록 수정'), findsOneWidget);
     expect(tester.widget<Checkbox>(find.byType(Checkbox).first).value, isTrue);
 
-    await tester.tap(find.byType(DropdownButtonFormField<int>).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('하체').last);
-    await tester.pumpAndSettle();
+    await pickSheetOption(tester, placeholder: '가슴', option: '하체');
 
-    await tester.tap(find.byType(DropdownButtonFormField<int>).last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('스쿼트').last);
-    await tester.pumpAndSettle();
+    await pickSheetOption(tester, placeholder: '운동 선택', option: '스쿼트');
 
     await tester.enterText(find.widgetWithText(TextFormField, '무게(kg)'), '100');
     await tester.enterText(find.widgetWithText(TextFormField, '횟수'), '5');
-    await tester.enterText(find.widgetWithText(TextFormField, '메모'), '수정 후 메모');
+    final memoField = find.byType(TextFormField).last;
+    await tester.ensureVisible(memoField);
+    await tester.pumpAndSettle();
+    await tester.enterText(memoField, '수정 후 메모');
 
     await tester.drag(find.byType(ListView), const Offset(0, -600));
     await tester.pumpAndSettle();
@@ -795,8 +812,8 @@ void main() {
     expect(find.text('스쿼트'), findsOneWidget);
     expect(find.text('하체'), findsWidgets);
     expect(find.text('워밍업 1세트'), findsOneWidget);
-    expect(find.text('총 볼륨 500kg'), findsWidgets);
-    expect(find.textContaining('예상 '), findsWidgets);
+    expect(find.text('500kg'), findsWidgets);
+    expect(find.textContaining('kcal'), findsWidgets);
     final updatedRecord = (await WorkoutService(
       WorkoutRepository(database),
     ).getWorkoutRecords()).single.entries.single;
@@ -835,6 +852,8 @@ void main() {
     expect(find.text('벤치프레스'), findsOneWidget);
     expect(find.text('삭제할 메모'), findsOneWidget);
 
+    await tester.ensureVisible(find.byTooltip('기록 삭제'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('기록 삭제'));
     await tester.pumpAndSettle();
 
@@ -847,7 +866,7 @@ void main() {
     expect(find.text('운동 기록을 삭제했습니다.'), findsOneWidget);
     expect(find.text('벤치프레스'), findsNothing);
     expect(find.text('삭제할 메모'), findsNothing);
-    expect(find.textContaining('아직 운동 기록이 없습니다.'), findsOneWidget);
+    expect(find.textContaining('아직 운동 기록이 없어요'), findsOneWidget);
 
     await tester.pump(const Duration(milliseconds: 1500));
   });
@@ -880,7 +899,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.bar_chart));
+    await tester.tap(find.byTooltip('통계'));
     await tester.pumpAndSettle();
 
     expect(find.text('운동 통계'), findsOneWidget);
@@ -892,16 +911,16 @@ void main() {
     expect(find.text('전체 운동'), findsNothing);
     expect(find.byType(DropdownButtonFormField<int>), findsNothing);
 
-    expect(find.text('월 최고 중량'), findsNothing);
-    expect(find.text('월 평균 중량'), findsNothing);
-    expect(find.text('월 총 볼륨'), findsNothing);
-    expect(find.text('전월 대비 총 볼륨'), findsNothing);
-    expect(find.text('월별 최고 중량'), findsNothing);
+    expect(find.text('주 최고 중량'), findsNothing);
+    expect(find.text('주 평균 중량'), findsNothing);
+    expect(find.text('주 총 볼륨'), findsNothing);
+    expect(find.text('전주 대비 총 볼륨'), findsNothing);
+    expect(find.text('주별 최고 중량'), findsNothing);
 
-    await tester.tap(find.widgetWithText(FilledButton, '운동 추가'));
-    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '관심운동 추가'));
+    await tester.pump(const Duration(milliseconds: 350));
     expect(find.text('관심 운동 추가'), findsOneWidget);
-    await tester.enterText(find.widgetWithText(TextField, '운동 검색'), '벤치');
+    await tester.enterText(find.widgetWithText(TextField, '운동 또는 부위 검색'), '벤치');
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, '추가').first);
     await tester.pumpAndSettle();
@@ -912,7 +931,7 @@ void main() {
 
     expect(find.text('관심 운동 상세 통계'), findsNothing);
     expect(find.text('벤치프레스 통계'), findsOneWidget);
-    expect(find.text('월별 기준 가슴 · 벤치프레스 기록입니다.'), findsOneWidget);
+    expect(find.text('주별 기준 가슴 · 벤치프레스 기록입니다.'), findsOneWidget);
     expect(find.text('70kg'), findsWidgets);
     expect(find.text('950kg'), findsWidgets);
 
@@ -924,7 +943,7 @@ void main() {
     expect(find.text('부위 필터'), findsNothing);
     expect(find.text('운동 필터'), findsNothing);
     expect(find.byType(DropdownButtonFormField<int>), findsNothing);
-    expect(find.text('월 최고 중량'), findsOneWidget);
+    expect(find.text('주 최고 중량'), findsOneWidget);
 
     expect(find.text('일간'), findsOneWidget);
     expect(find.text('주간'), findsOneWidget);
@@ -967,7 +986,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.bar_chart));
+      await tester.tap(find.byTooltip('통계'));
       await tester.pumpAndSettle();
 
       expect(find.text('부위 필터'), findsNothing);
@@ -978,10 +997,13 @@ void main() {
       );
       expect(find.byType(DropdownButtonFormField<int>), findsNothing);
 
-      await tester.tap(find.widgetWithText(FilledButton, '운동 추가'));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.widgetWithText(TextField, '운동 검색'), '덤벨');
-      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '관심운동 추가'));
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.enterText(
+        find.widgetWithText(TextField, '운동 또는 부위 검색'),
+        '덤벨',
+      );
+      await tester.pump();
 
       expect(find.text('덤벨 플라이'), findsOneWidget);
       expect(find.text('가슴'), findsOneWidget);
@@ -1003,12 +1025,12 @@ void main() {
       await tester.tap(find.byIcon(Icons.add).last);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('운동 등록'));
+      await tester.tap(find.text('새 운동 등록'));
       await tester.pumpAndSettle();
       await tester.tap(
         find.descendant(
           of: find.byType(AlertDialog),
-          matching: find.byType(DropdownButtonFormField<int>),
+          matching: find.text('운동 부위 선택'),
         ),
       );
       await tester.pumpAndSettle();

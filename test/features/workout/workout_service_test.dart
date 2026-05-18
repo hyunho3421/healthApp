@@ -183,6 +183,114 @@ void main() {
     expect(record.sets.map((set) => set.isWarmup), [false, true]);
   });
 
+  test(
+    'paginates workout records with stable date and session cursor',
+    () async {
+      final benchPress = (await database.select(database.exercises).get())
+          .firstWhere((exercise) => exercise.name == '벤치프레스');
+
+      for (var day = 1; day <= 5; day++) {
+        await service.saveWorkout(
+          WorkoutDraft(
+            workoutDate: DateTime(2026, 5, day),
+            entries: [
+              WorkoutEntryDraft(
+                exerciseId: benchPress.id,
+                sets: [
+                  WorkoutSetDraft(weight: (60 + day).toDouble(), reps: 10),
+                ],
+              ),
+            ],
+          ),
+        );
+      }
+      final sameDayFirstId = await service.saveWorkout(
+        WorkoutDraft(
+          workoutDate: DateTime(2026, 5, 6),
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: benchPress.id,
+              sets: const [WorkoutSetDraft(weight: 70, reps: 5)],
+            ),
+          ],
+        ),
+      );
+      final sameDaySecondId = await service.saveWorkout(
+        WorkoutDraft(
+          workoutDate: DateTime(2026, 5, 6),
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: benchPress.id,
+              sets: const [WorkoutSetDraft(weight: 75, reps: 5)],
+            ),
+          ],
+        ),
+      );
+
+      final firstPage = await service.getWorkoutRecords(limit: 3);
+
+      expect(firstPage, hasLength(3));
+      expect(firstPage[0].session.id, sameDaySecondId);
+      expect(firstPage[1].session.id, sameDayFirstId);
+      expect(firstPage.map((record) => record.session.workoutDate.day), [
+        6,
+        6,
+        5,
+      ]);
+
+      final cursor = firstPage.last.session;
+      final secondPage = await service.getWorkoutRecords(
+        limit: 3,
+        beforeDate: cursor.workoutDate,
+        beforeSessionId: cursor.id,
+      );
+
+      expect(secondPage.map((record) => record.session.workoutDate.day), [
+        4,
+        3,
+        2,
+      ]);
+      expect({
+        ...firstPage,
+        ...secondPage,
+      }, hasLength(firstPage.length + secondPage.length));
+    },
+  );
+
+  test('counts all workout sets independently from paged records', () async {
+    final benchPress = (await database.select(database.exercises).get())
+        .firstWhere((exercise) => exercise.name == '벤치프레스');
+
+    await service.saveWorkout(
+      WorkoutDraft(
+        workoutDate: DateTime(2026, 5, 16),
+        entries: [
+          WorkoutEntryDraft(
+            exerciseId: benchPress.id,
+            sets: const [
+              WorkoutSetDraft(weight: 60, reps: 10),
+              WorkoutSetDraft(weight: 65, reps: 8),
+            ],
+          ),
+        ],
+      ),
+    );
+    await service.saveWorkout(
+      WorkoutDraft(
+        workoutDate: DateTime(2026, 5, 17),
+        entries: [
+          WorkoutEntryDraft(
+            exerciseId: benchPress.id,
+            sets: const [WorkoutSetDraft(weight: 70, reps: 5)],
+          ),
+        ],
+      ),
+    );
+
+    expect(await service.getWorkoutRecords(limit: 1), hasLength(1));
+    expect(await service.getWorkoutSetCount(), 3);
+  });
+
   test('validates empty entries and invalid set values', () async {
     expect(
       () => service.saveWorkout(

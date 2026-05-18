@@ -30,14 +30,28 @@ class WorkoutService {
     DateTime? to,
     int? bodyPartId,
     int? exerciseId,
+    int? limit,
+    DateTime? beforeDate,
+    int? beforeSessionId,
   }) {
+    if (limit != null && limit < 1) {
+      throw ArgumentError.value(limit, 'limit', '조회 개수는 1 이상이어야 합니다.');
+    }
+    if ((beforeDate == null) != (beforeSessionId == null)) {
+      throw ArgumentError('beforeDate와 beforeSessionId는 함께 지정해야 합니다.');
+    }
     return _repository.getWorkoutRecords(
       from: from,
       to: to,
       bodyPartId: bodyPartId,
       exerciseId: exerciseId,
+      limit: limit,
+      beforeDate: beforeDate,
+      beforeSessionId: beforeSessionId,
     );
   }
+
+  Future<int> getWorkoutSetCount() => _repository.getWorkoutSetCount();
 
   Future<void> deleteSession(int sessionId) =>
       _repository.deleteSession(sessionId);

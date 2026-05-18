@@ -131,9 +131,22 @@ class WorkoutRepository {
     DateTime? to,
     int? bodyPartId,
     int? exerciseId,
+    int? limit,
+    DateTime? beforeDate,
+    int? beforeSessionId,
   }) async {
+    if (limit != null && limit < 1) {
+      throw ArgumentError.value(limit, 'limit', '조회 개수는 1 이상이어야 합니다.');
+    }
+    if ((beforeDate == null) != (beforeSessionId == null)) {
+      throw ArgumentError('beforeDate와 beforeSessionId는 함께 지정해야 합니다.');
+    }
+
     final sessionQuery = _database.select(_database.workoutSessions)
-      ..orderBy([(table) => OrderingTerm.desc(table.workoutDate)]);
+      ..orderBy([
+        (table) => OrderingTerm.desc(table.workoutDate),
+        (table) => OrderingTerm.desc(table.id),
+      ]);
 
     if (from != null) {
       sessionQuery.where(
@@ -142,6 +155,17 @@ class WorkoutRepository {
     }
     if (to != null) {
       sessionQuery.where((table) => table.workoutDate.isSmallerThanValue(to));
+    }
+    if (beforeDate != null && beforeSessionId != null) {
+      sessionQuery.where(
+        (table) =>
+            table.workoutDate.isSmallerThanValue(beforeDate) |
+            (table.workoutDate.equals(beforeDate) &
+                table.id.isSmallerThanValue(beforeSessionId)),
+      );
+    }
+    if (limit != null) {
+      sessionQuery.limit(limit);
     }
 
     final sessions = await sessionQuery.get();
@@ -178,6 +202,14 @@ class WorkoutRepository {
     }
 
     return records;
+  }
+
+  Future<int> getWorkoutSetCount() async {
+    final countExpression = _database.workoutSets.id.count();
+    final query = _database.selectOnly(_database.workoutSets)
+      ..addColumns([countExpression]);
+    final row = await query.getSingle();
+    return row.read(countExpression) ?? 0;
   }
 
   Future<void> deleteSession(int sessionId) {

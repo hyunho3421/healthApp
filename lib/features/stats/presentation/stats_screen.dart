@@ -23,7 +23,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     const <ExercisePeriodStats>[],
   );
   late Future<List<FavoriteExerciseSummary>> _favoriteStatsFuture;
-  StatsPeriodUnit _selectedPeriodUnit = StatsPeriodUnit.monthly;
+  StatsPeriodUnit _selectedPeriodUnit = StatsPeriodUnit.weekly;
   FavoriteExerciseSummary? _selectedFavoriteExercise;
 
   @override
@@ -133,8 +133,8 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Text('기간별 운동 통계', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 12),
+            const _StatsHero(),
+            const SizedBox(height: 14),
             _FavoriteExercisesSection(
               future: _favoriteStatsFuture,
               periodUnit: _selectedPeriodUnit,
@@ -246,6 +246,55 @@ class _FavoriteExercisesSection extends StatelessWidget {
   }
 }
 
+class _StatsHero extends StatelessWidget {
+  const _StatsHero();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111827),
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '기간별 운동 통계',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '관심 운동을 고정하고 성장 추이를 한눈에 확인하세요.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.72),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Icon(Icons.bar_chart_rounded, color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _FavoriteExerciseEmptyCard extends StatelessWidget {
   const _FavoriteExerciseEmptyCard({required this.onAdd});
 
@@ -253,10 +302,9 @@ class _FavoriteExerciseEmptyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return Card(
       elevation: 0,
-      color: colorScheme.surfaceContainerHighest,
+      color: Colors.white,
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
@@ -266,7 +314,7 @@ class _FavoriteExerciseEmptyCard extends StatelessWidget {
             FilledButton.icon(
               onPressed: onAdd,
               icon: const Icon(Icons.add_rounded),
-              label: const Text('운동 추가'),
+              label: const Text('관심운동 추가'),
             ),
           ],
         ),
@@ -286,12 +334,18 @@ class _AddFavoriteExerciseCard extends StatelessWidget {
       width: 132,
       child: OutlinedButton(
         onPressed: onAdd,
+        style: OutlinedButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          side: const BorderSide(color: Color(0xFFE1E8F2)),
+        ),
         child: const Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.add_rounded),
             SizedBox(height: 8),
-            Text('+ 추가'),
+            Text('관심운동\n추가', textAlign: TextAlign.center),
           ],
         ),
       ),
@@ -323,9 +377,7 @@ class _FavoriteExerciseCard extends StatelessWidget {
       width: 236,
       child: Card(
         elevation: 0,
-        color: isSelected
-            ? colorScheme.primaryContainer
-            : colorScheme.surfaceContainerHighest,
+        color: isSelected ? const Color(0xFFE8F2FF) : Colors.white,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(
@@ -420,8 +472,19 @@ class _AddFavoriteExerciseSheet extends StatefulWidget {
 }
 
 class _AddFavoriteExerciseSheetState extends State<_AddFavoriteExerciseSheet> {
+  late final Future<List<Object>> _sheetDataFuture;
   String _query = '';
   int? _addingExerciseId;
+
+  @override
+  void initState() {
+    super.initState();
+    _sheetDataFuture = Future.wait([
+      widget.exercisesFuture,
+      widget.bodyPartsFuture,
+      widget.favoriteStatsFuture,
+    ]);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -435,11 +498,7 @@ class _AddFavoriteExerciseSheetState extends State<_AddFavoriteExerciseSheet> {
         maxChildSize: 0.94,
         builder: (context, scrollController) {
           return FutureBuilder<List<Object>>(
-            future: Future.wait([
-              widget.exercisesFuture,
-              widget.bodyPartsFuture,
-              widget.favoriteStatsFuture,
-            ]),
+            future: _sheetDataFuture,
             builder: (context, snapshot) {
               final loaded = snapshot.data;
               final exercises = loaded == null
@@ -472,19 +531,44 @@ class _AddFavoriteExerciseSheetState extends State<_AddFavoriteExerciseSheet> {
 
               return ListView(
                 controller: scrollController,
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
                 children: [
-                  Text(
-                    '관심 운동 추가',
-                    style: Theme.of(context).textTheme.titleLarge,
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF111827),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '관심 운동 추가',
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                              ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '검색해서 통계 카드에 고정할 운동을 선택하세요.',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Colors.white.withValues(alpha: 0.72),
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     decoration: const InputDecoration(
-                      labelText: '운동 검색',
-                      border: OutlineInputBorder(),
+                      hintText: '운동 또는 부위 검색',
                       prefixIcon: Icon(Icons.search_rounded),
                     ),
+                    onTapOutside: (_) =>
+                        FocusManager.instance.primaryFocus?.unfocus(),
                     onChanged: (value) => setState(() => _query = value),
                   ),
                   const SizedBox(height: 12),
@@ -551,21 +635,67 @@ class _AddFavoriteExerciseTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      title: Text(exercise.name),
-      subtitle: Text(bodyPartName),
-      trailing: isFavorite
-          ? const Chip(label: Text('추가됨'))
-          : FilledButton(
-              onPressed: isAdding ? null : onAdd,
-              child: isAdding
-                  ? const SizedBox.square(
-                      dimension: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('추가'),
-            ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE8EEF6)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F2FF),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(Icons.fitness_center_rounded),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      exercise.name,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(bodyPartName),
+                  ],
+                ),
+              ),
+              if (isFavorite)
+                const Chip(label: Text('추가됨'))
+              else
+                SizedBox(
+                  width: 74,
+                  child: FilledButton(
+                    onPressed: isAdding ? null : onAdd,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 44),
+                      padding: EdgeInsets.zero,
+                    ),
+                    child: isAdding
+                        ? const SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('추가'),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

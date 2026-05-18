@@ -47,8 +47,8 @@ void main() {
     expect(find.text('관심 운동'), findsOneWidget);
     expect(find.text('벤치프레스'), findsOneWidget);
     expect(find.text('월간'), findsOneWidget);
-    expect(find.text('2026년 5월 기준'), findsOneWidget);
-    expect(find.text('월 최고 중량'), findsOneWidget);
+    expect(find.text('2026년 5월 11일 주 기준'), findsOneWidget);
+    expect(find.text('주 최고 중량'), findsOneWidget);
     expect(find.byType(DropdownButtonFormField<int>), findsNothing);
 
     await expectLater(
