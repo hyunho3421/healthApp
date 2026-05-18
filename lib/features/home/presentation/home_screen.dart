@@ -7,8 +7,6 @@ import '../../../core/db/app_database.dart';
 import '../../../core/models/exercise_type.dart';
 import '../../../core/widgets/centered_toast.dart';
 import '../../profile/providers/user_profile_providers.dart';
-import '../../profile/presentation/profile_settings_screen.dart';
-import '../../stats/presentation/stats_screen.dart';
 import '../../workout/models/workout_record.dart';
 import '../../workout/presentation/add_workout_screen.dart';
 import '../../workout/providers/workout_providers.dart';
@@ -186,6 +184,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!mounted || saved != true) {
       return;
     }
+    notifyWorkoutChanged(ref);
     _refreshRecords();
     CenteredToast.show(context, '운동 기록을 저장했습니다.');
   }
@@ -233,6 +232,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!mounted || saved != true) {
       return;
     }
+    notifyWorkoutChanged(ref);
     _refreshRecords();
     CenteredToast.show(context, '수정되었습니다');
   }
@@ -273,6 +273,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!mounted) {
         return;
       }
+      notifyWorkoutChanged(ref);
       _refreshRecords();
       CenteredToast.show(context, '운동 기록을 삭제했습니다.');
     } catch (error) {
@@ -283,39 +284,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  void _openStats() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => const StatsScreen()));
-  }
-
-  Future<void> _openWorkoutRecords() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const _WorkoutRecordListScreen()),
-    );
-    if (!mounted || changed != true) {
-      return;
-    }
-    _refreshRecords();
-  }
-
-  Future<void> _openProfileSettings() async {
-    final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const ProfileSettingsScreen()),
-    );
-    if (!mounted || saved != true) {
-      return;
-    }
-    setState(() {
-      _bodyWeightKgFuture = ref
-          .read(userProfileServiceProvider)
-          .getBodyWeightKg();
-    });
-    CenteredToast.show(context, '프로필을 저장했습니다.');
-  }
-
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(workoutChangeVersionProvider, (previous, next) {
+      if (previous != null && previous != next) {
+        _refreshRecords();
+      }
+    });
+    ref.listen<int>(userProfileChangeVersionProvider, (previous, next) {
+      if (previous != null && previous != next) {
+        setState(() {
+          _bodyWeightKgFuture = ref
+              .read(userProfileServiceProvider)
+              .getBodyWeightKg();
+        });
+      }
+    });
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
@@ -343,9 +327,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           _HomeHero(
                             records: weeklyRecords,
                             totalSetCount: summary?.totalSetCount ?? 0,
-                            onRecordsTap: _openWorkoutRecords,
-                            onProfileTap: _openProfileSettings,
-                            onStatsTap: _openStats,
                           ),
                           _WeeklyBodyPartSummary(
                             records: weeklyRecords,
@@ -383,6 +364,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'home-add-workout',
         onPressed: _openAddWorkout,
         icon: const Icon(Icons.add),
         label: const Text('기록 추가'),
@@ -391,16 +373,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-class _WorkoutRecordListScreen extends ConsumerStatefulWidget {
-  const _WorkoutRecordListScreen();
+class WorkoutRecordListScreen extends ConsumerStatefulWidget {
+  const WorkoutRecordListScreen({super.key, this.isRootTab = false});
+
+  final bool isRootTab;
 
   @override
-  ConsumerState<_WorkoutRecordListScreen> createState() =>
+  ConsumerState<WorkoutRecordListScreen> createState() =>
       _WorkoutRecordListScreenState();
 }
 
 class _WorkoutRecordListScreenState
-    extends ConsumerState<_WorkoutRecordListScreen> {
+    extends ConsumerState<WorkoutRecordListScreen> {
   static const int _recordsPageSize = 20;
 
   final ScrollController _recordsScrollController = ScrollController();
@@ -531,6 +515,7 @@ class _WorkoutRecordListScreenState
       return;
     }
     _changed = true;
+    notifyWorkoutChanged(ref);
     _loadInitialRecords();
     CenteredToast.show(context, '운동 기록을 저장했습니다.');
   }
@@ -550,6 +535,7 @@ class _WorkoutRecordListScreenState
       return;
     }
     _changed = true;
+    notifyWorkoutChanged(ref);
     _loadInitialRecords();
     CenteredToast.show(context, '수정되었습니다');
   }
@@ -591,6 +577,7 @@ class _WorkoutRecordListScreenState
         return;
       }
       _changed = true;
+      notifyWorkoutChanged(ref);
       _loadInitialRecords();
       CenteredToast.show(context, '운동 기록을 삭제했습니다.');
     } catch (error) {
@@ -607,6 +594,89 @@ class _WorkoutRecordListScreenState
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(workoutChangeVersionProvider, (previous, next) {
+      if (previous != null && previous != next) {
+        _changed = true;
+        _loadInitialRecords();
+      }
+    });
+    ref.listen<int>(userProfileChangeVersionProvider, (previous, next) {
+      if (previous != null && previous != next) {
+        setState(() {
+          _bodyWeightKgFuture = ref
+              .read(userProfileServiceProvider)
+              .getBodyWeightKg();
+        });
+      }
+    });
+
+    final scaffold = Scaffold(
+      appBar: AppBar(
+        title: const Text('운동 기록'),
+        automaticallyImplyLeading: !widget.isRootTab,
+        leading: widget.isRootTab
+            ? null
+            : IconButton(
+                onPressed: _close,
+                icon: const Icon(Icons.arrow_back_rounded),
+                tooltip: '뒤로가기',
+              ),
+      ),
+      body: SafeArea(
+        child: _isInitialRecordsLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _recordsLoadError != null && _records.isEmpty
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('기록을 불러오지 못했습니다: $_recordsLoadError'),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: _loadInitialRecords,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('다시 불러오기'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            : _records.isEmpty
+            ? const _EmptyRecordsState()
+            : FutureBuilder<double?>(
+                future: _bodyWeightKgFuture,
+                builder: (context, weightSnapshot) => _WorkoutRecordList(
+                  records: _records,
+                  scrollController: _recordsScrollController,
+                  isLoadingMore: _isLoadingMoreRecords,
+                  hasMoreRecords: _hasMoreRecords,
+                  loadMoreError: _recordsLoadError,
+                  onLoadMoreRetry: _loadMoreRecords,
+                  bodyWeightKg: weightSnapshot.data ?? 70,
+                  usesDefaultBodyWeight: weightSnapshot.data == null,
+                  focusedDate: null,
+                  focusRequestId: 0,
+                  onRecordTap: _openEditWorkout,
+                  onRecordDelete: _confirmDeleteWorkout,
+                ),
+              ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: widget.isRootTab
+            ? 'records-tab-add-workout'
+            : 'records-route-add-workout',
+        onPressed: _openAddWorkout,
+        icon: const Icon(Icons.add),
+        label: const Text('기록 추가'),
+      ),
+    );
+
+    if (widget.isRootTab) {
+      return scaffold;
+    }
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -614,62 +684,7 @@ class _WorkoutRecordListScreenState
           _close();
         }
       },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('운동 기록'),
-          leading: IconButton(
-            onPressed: _close,
-            icon: const Icon(Icons.arrow_back_rounded),
-            tooltip: '뒤로가기',
-          ),
-        ),
-        body: SafeArea(
-          child: _isInitialRecordsLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _recordsLoadError != null && _records.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('기록을 불러오지 못했습니다: $_recordsLoadError'),
-                        const SizedBox(height: 12),
-                        OutlinedButton.icon(
-                          onPressed: _loadInitialRecords,
-                          icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('다시 불러오기'),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : _records.isEmpty
-              ? const _EmptyRecordsState()
-              : FutureBuilder<double?>(
-                  future: _bodyWeightKgFuture,
-                  builder: (context, weightSnapshot) => _WorkoutRecordList(
-                    records: _records,
-                    scrollController: _recordsScrollController,
-                    isLoadingMore: _isLoadingMoreRecords,
-                    hasMoreRecords: _hasMoreRecords,
-                    loadMoreError: _recordsLoadError,
-                    onLoadMoreRetry: _loadMoreRecords,
-                    bodyWeightKg: weightSnapshot.data ?? 70,
-                    usesDefaultBodyWeight: weightSnapshot.data == null,
-                    focusedDate: null,
-                    focusRequestId: 0,
-                    onRecordTap: _openEditWorkout,
-                    onRecordDelete: _confirmDeleteWorkout,
-                  ),
-                ),
-        ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: _openAddWorkout,
-          icon: const Icon(Icons.add),
-          label: const Text('기록 추가'),
-        ),
-      ),
+      child: scaffold,
     );
   }
 }
@@ -687,19 +702,10 @@ class _HomeSummary {
 }
 
 class _HomeHero extends StatelessWidget {
-  const _HomeHero({
-    required this.records,
-    required this.totalSetCount,
-    required this.onRecordsTap,
-    required this.onProfileTap,
-    required this.onStatsTap,
-  });
+  const _HomeHero({required this.records, required this.totalSetCount});
 
   final List<WorkoutRecord> records;
   final int totalSetCount;
-  final VoidCallback onRecordsTap;
-  final VoidCallback onProfileTap;
-  final VoidCallback onStatsTap;
 
   @override
   Widget build(BuildContext context) {
@@ -785,24 +791,6 @@ class _HomeHero extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                _HeroIconButton(
-                  icon: Icons.event_note_rounded,
-                  tooltip: '운동 기록 전체보기',
-                  onTap: onRecordsTap,
-                ),
-                const SizedBox(width: 8),
-                _HeroIconButton(
-                  icon: Icons.bar_chart_rounded,
-                  tooltip: '통계',
-                  onTap: onStatsTap,
-                ),
-                const SizedBox(width: 8),
-                _HeroIconButton(
-                  icon: Icons.person_outline_rounded,
-                  tooltip: '설정/프로필',
-                  onTap: onProfileTap,
-                ),
               ],
             ),
             const SizedBox(height: 22),
@@ -848,34 +836,6 @@ class _HomeHero extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _HeroIconButton extends StatelessWidget {
-  const _HeroIconButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white.withValues(alpha: 0.12),
-      shape: const CircleBorder(),
-      child: IconButton(
-        onPressed: onTap,
-        constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-        padding: EdgeInsets.zero,
-        iconSize: 20,
-        icon: Icon(icon, color: Colors.white),
-        tooltip: tooltip,
       ),
     );
   }

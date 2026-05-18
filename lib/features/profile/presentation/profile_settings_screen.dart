@@ -12,7 +12,14 @@ String _formatVolume(double value) {
 }
 
 class ProfileSettingsScreen extends ConsumerStatefulWidget {
-  const ProfileSettingsScreen({super.key});
+  const ProfileSettingsScreen({
+    super.key,
+    this.isRootTab = false,
+    this.onSaved,
+  });
+
+  final bool isRootTab;
+  final VoidCallback? onSaved;
 
   @override
   ConsumerState<ProfileSettingsScreen> createState() =>
@@ -58,10 +65,17 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
     try {
       final bodyWeightKg = double.parse(_bodyWeightController.text.trim());
       await ref.read(userProfileServiceProvider).saveBodyWeightKg(bodyWeightKg);
+      notifyUserProfileChanged(ref);
       if (!mounted) {
         return;
       }
-      Navigator.of(context).pop(true);
+      widget.onSaved?.call();
+      if (widget.isRootTab) {
+        setState(() => _isSaving = false);
+        CenteredToast.show(context, '프로필을 저장했습니다.');
+      } else {
+        Navigator.of(context).pop(true);
+      }
     } catch (error) {
       if (!mounted) {
         return;

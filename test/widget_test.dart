@@ -364,16 +364,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('운동 기록 전체보기'), findsOneWidget);
-    await tester.tap(find.byTooltip('운동 기록 전체보기'));
+    expect(find.byTooltip('운동 기록 전체보기'), findsNothing);
+    await tester.tap(find.text('운동기록'));
     await tester.pumpAndSettle();
 
     expect(find.text('운동 기록'), findsOneWidget);
     expect(find.text('전용 페이지 확인'), findsOneWidget);
     expect(find.text('벤치프레스'), findsOneWidget);
-    expect(find.byTooltip('통계'), findsNothing);
+    expect(find.byTooltip('뒤로가기'), findsNothing);
 
-    await tester.tap(find.byTooltip('뒤로가기'));
+    await tester.tap(find.text('메인'));
     await tester.pumpAndSettle();
 
     expect(find.text('Muscle Diary'), findsOneWidget);
@@ -751,7 +751,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('통계'));
+    await tester.tap(find.text('운동통계'));
     await tester.pumpAndSettle();
 
     expect(find.text('부위 필터'), findsNothing);
@@ -788,7 +788,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('통계'));
+    await tester.tap(find.text('운동통계'));
     await tester.pumpAndSettle();
     expect(find.text('관심 운동 상세 통계'), findsNothing);
     expect(find.text('스쿼트 통계'), findsOneWidget);
@@ -828,7 +828,7 @@ void main() {
     expect(find.text('20kcal'), findsOneWidget);
     expect(find.text('70kg 기준'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('설정/프로필'));
+    await tester.tap(find.text('설정'));
     await tester.pumpAndSettle();
 
     expect(find.text('설정/프로필'), findsOneWidget);
@@ -952,9 +952,14 @@ void main() {
     expect(find.text('벤치프레스'), findsOneWidget);
     expect(find.text('삭제할 메모'), findsOneWidget);
 
-    await tester.ensureVisible(find.byTooltip('기록 삭제'));
+    final deleteIcon = find.byIcon(Icons.delete_outline_rounded).last;
+    final deleteButton = find.ancestor(
+      of: deleteIcon,
+      matching: find.byType(IconButton),
+    );
+    await tester.ensureVisible(deleteIcon);
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('기록 삭제'));
+    tester.widget<IconButton>(deleteButton).onPressed?.call();
     await tester.pumpAndSettle();
 
     expect(find.text('기록 삭제'), findsOneWidget);
@@ -999,7 +1004,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('통계'));
+    await tester.tap(find.text('운동통계'));
     await tester.pumpAndSettle();
 
     expect(find.text('운동 통계'), findsOneWidget);
@@ -1086,7 +1091,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('통계'));
+      await tester.tap(find.text('운동통계'));
       await tester.pumpAndSettle();
 
       expect(find.text('부위 필터'), findsNothing);

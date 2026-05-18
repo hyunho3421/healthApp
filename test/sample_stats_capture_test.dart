@@ -40,7 +40,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('통계'));
+    await tester.tap(find.text('운동통계'));
     await tester.pumpAndSettle();
 
     expect(find.text('기간별 운동 통계'), findsOneWidget);

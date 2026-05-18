@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 
 import '../../database/providers/app_database_provider.dart';
 import '../application/workout_service.dart';
@@ -11,3 +12,9 @@ final workoutRepositoryProvider = Provider<WorkoutRepository>((ref) {
 final workoutServiceProvider = Provider<WorkoutService>((ref) {
   return WorkoutService(ref.watch(workoutRepositoryProvider));
 });
+
+final workoutChangeVersionProvider = StateProvider<int>((ref) => 0);
+
+void notifyWorkoutChanged(WidgetRef ref) {
+  ref.read(workoutChangeVersionProvider.notifier).state++;
+}
