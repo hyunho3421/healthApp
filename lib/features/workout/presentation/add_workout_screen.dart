@@ -21,7 +21,12 @@ class _AddedExerciseResult {
 }
 
 class _AddExerciseDialog extends ConsumerStatefulWidget {
-  const _AddExerciseDialog();
+  const _AddExerciseDialog({this.exercise, this.referencedEntryCount = 0});
+
+  final Exercise? exercise;
+  final int referencedEntryCount;
+
+  bool get isEditing => exercise != null;
 
   @override
   ConsumerState<_AddExerciseDialog> createState() => _AddExerciseDialogState();
@@ -40,6 +45,12 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
   void initState() {
     super.initState();
     _bodyPartsFuture = ref.read(exerciseServiceProvider).getBodyParts();
+    final exercise = widget.exercise;
+    if (exercise != null) {
+      _selectedBodyPartId = exercise.bodyPartId;
+      _selectedExerciseTypeId = exercise.type;
+      _nameController.text = exercise.name;
+    }
   }
 
   @override
@@ -61,22 +72,39 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
 
     setState(() => _isSaving = true);
     try {
-      final exerciseId = await ref
-          .read(exerciseServiceProvider)
-          .addCustomExercise(
-            bodyPartId: bodyPartId,
-            name: _nameController.text,
-            type: _selectedExerciseTypeId,
-          );
+      final exercise = widget.exercise;
+      final int exerciseId;
+      if (exercise == null) {
+        exerciseId = await ref
+            .read(exerciseServiceProvider)
+            .addCustomExercise(
+              bodyPartId: bodyPartId,
+              name: _nameController.text,
+              type: _selectedExerciseTypeId,
+            );
+      } else {
+        await ref
+            .read(exerciseServiceProvider)
+            .updateCustomExercise(
+              id: exercise.id,
+              bodyPartId: bodyPartId,
+              name: _nameController.text,
+              type: _selectedExerciseTypeId,
+            );
+        exerciseId = exercise.id;
+      }
       if (!mounted) {
         return;
       }
       Navigator.of(context).pop(
         _AddedExerciseResult(bodyPartId: bodyPartId, exerciseId: exerciseId),
       );
-    } on StateError {
+    } on StateError catch (error) {
       if (mounted) {
-        setState(() => _errorText = '이미 등록된 운동입니다.');
+        final message = error.message.toString();
+        setState(
+          () => _errorText = message.isEmpty ? '이미 등록된 운동입니다.' : message,
+        );
       }
     } on ArgumentError catch (error) {
       if (mounted) {
@@ -86,7 +114,11 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
       }
     } catch (error) {
       if (mounted) {
-        setState(() => _errorText = '운동 등록에 실패했습니다: $error');
+        setState(
+          () => _errorText = widget.isEditing
+              ? '운동 수정에 실패했습니다: $error'
+              : '운동 등록에 실패했습니다: $error',
+        );
       }
     } finally {
       if (mounted) {
@@ -101,7 +133,7 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
       title: Row(
         children: [
-          const Expanded(child: Text('운동 등록')),
+          Expanded(child: Text(widget.isEditing ? '운동 수정' : '운동 등록')),
           IconButton(
             onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
             icon: const Icon(Icons.close_rounded),
@@ -164,6 +196,15 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
             ),
             const SizedBox(height: 12),
             Text('운동 유형', style: Theme.of(context).textTheme.labelLarge),
+            if (widget.isEditing && widget.referencedEntryCount > 0) ...[
+              const SizedBox(height: 4),
+              Text(
+                '기록 ${widget.referencedEntryCount}개에서 사용 중이라 운동 유형은 유지됩니다.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF6B7280)),
+              ),
+            ],
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -180,7 +221,10 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
                           ? const Color(0xFF3182F6)
                           : const Color(0xFFE1E8F2),
                     ),
-                    onSelected: _isSaving
+                    onSelected:
+                        _isSaving ||
+                            (widget.isEditing &&
+                                widget.referencedEntryCount > 0)
                         ? null
                         : (selected) {
                             if (selected) {
@@ -210,7 +254,7 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
                   dimension: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('등록'),
+              : Text(widget.isEditing ? '수정' : '등록'),
         ),
       ],
     );
@@ -326,6 +370,83 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
           .getExercises(bodyPartId: result.bodyPartId);
     });
     CenteredToast.show(context, '운동을 등록했습니다.');
+  }
+
+  Future<void> _openEditExercise(Exercise exercise) async {
+    final referencedEntryCount = await ref
+        .read(exerciseServiceProvider)
+        .countWorkoutEntriesForExercise(exercise.id);
+    if (!mounted) {
+      return;
+    }
+    final result = await showDialog<_AddedExerciseResult>(
+      context: context,
+      builder: (_) => _AddExerciseDialog(
+        exercise: exercise,
+        referencedEntryCount: referencedEntryCount,
+      ),
+    );
+    if (result == null || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _selectedBodyPartId = result.bodyPartId;
+      _selectedExerciseId = result.exerciseId;
+      _exercisesFuture = ref
+          .read(exerciseServiceProvider)
+          .getExercises(bodyPartId: result.bodyPartId);
+    });
+    CenteredToast.show(context, '운동을 수정했습니다.');
+  }
+
+  Future<void> _deleteExercise(Exercise exercise) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('운동 삭제'),
+        content: Text(
+          '내 운동 `${exercise.name}`을 삭제할까요?\n기록에서 사용 중이면 삭제할 수 없습니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    try {
+      await ref.read(exerciseServiceProvider).deleteCustomExercise(exercise.id);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        if (_selectedExerciseId == exercise.id) {
+          _selectedExerciseId = null;
+        }
+        _exercisesFuture = ref
+            .read(exerciseServiceProvider)
+            .getExercises(bodyPartId: _selectedBodyPartId);
+      });
+      CenteredToast.show(context, '운동을 삭제했습니다.');
+    } on StateError catch (error) {
+      if (mounted) {
+        CenteredToast.show(context, error.message.toString());
+      }
+    } catch (error) {
+      if (mounted) {
+        CenteredToast.show(context, '운동 삭제에 실패했습니다: $error');
+      }
+    }
   }
 
   Future<void> _pickDate() async {
@@ -487,6 +608,8 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                       enabled: !_isSaving && _selectedBodyPartId != null,
                       onChanged: (value) =>
                           setState(() => _selectedExerciseId = value),
+                      onEdit: _isSaving ? null : _openEditExercise,
+                      onDelete: _isSaving ? null : _deleteExercise,
                     ),
                     Align(
                       alignment: Alignment.centerRight,
@@ -567,12 +690,16 @@ class _ExerciseDropdown extends StatelessWidget {
     required this.selectedExerciseId,
     required this.enabled,
     required this.onChanged,
+    required this.onEdit,
+    required this.onDelete,
   });
 
   final Future<List<Exercise>>? future;
   final int? selectedExerciseId;
   final bool enabled;
   final ValueChanged<int?> onChanged;
+  final ValueChanged<Exercise>? onEdit;
+  final ValueChanged<Exercise>? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -603,22 +730,349 @@ class _ExerciseDropdown extends StatelessWidget {
             exercises.any((exercise) => exercise.id == selectedExerciseId)
             ? selectedExerciseId
             : null;
-        return _PickerField<int>(
-          label: '운동',
+        return _ExercisePickerField(
           placeholder: exercises.isEmpty ? '등록된 운동이 없습니다' : '운동 선택',
-          value: effectiveExerciseId,
+          exercises: exercises,
+          selectedExerciseId: effectiveExerciseId,
           enabled: enabled && exercises.isNotEmpty,
-          options: [
-            for (final exercise in exercises)
-              _PickerOption(value: exercise.id, label: exercise.name),
-          ],
           onChanged: onChanged,
+          onEdit: onEdit,
+          onDelete: onDelete,
           validator: (value) => value == null ? '운동을 선택해 주세요.' : null,
         );
       },
     );
   }
 }
+
+class _ExercisePickerField extends FormField<int> {
+  _ExercisePickerField({
+    required String placeholder,
+    required List<Exercise> exercises,
+    required int? selectedExerciseId,
+    required bool enabled,
+    required ValueChanged<int?> onChanged,
+    required ValueChanged<Exercise>? onEdit,
+    required ValueChanged<Exercise>? onDelete,
+    super.validator,
+  }) : super(
+         key: ValueKey<Object?>('운동-$selectedExerciseId'),
+         initialValue: selectedExerciseId,
+         builder: (state) {
+           Exercise? selected;
+           for (final exercise in exercises) {
+             if (exercise.id == state.value) {
+               selected = exercise;
+               break;
+             }
+           }
+           return _ExercisePickerFieldBody(
+             placeholder: placeholder,
+             selected: selected,
+             exercises: exercises,
+             enabled: enabled,
+             errorText: state.errorText,
+             onChanged: (nextValue) {
+               state.didChange(nextValue);
+               onChanged(nextValue);
+             },
+             onEdit: onEdit,
+             onDelete: onDelete,
+           );
+         },
+       );
+}
+
+class _ExercisePickerFieldBody extends StatelessWidget {
+  const _ExercisePickerFieldBody({
+    required this.placeholder,
+    required this.selected,
+    required this.exercises,
+    required this.enabled,
+    required this.errorText,
+    required this.onChanged,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final String placeholder;
+  final Exercise? selected;
+  final List<Exercise> exercises;
+  final bool enabled;
+  final String? errorText;
+  final ValueChanged<int?> onChanged;
+  final ValueChanged<Exercise>? onEdit;
+  final ValueChanged<Exercise>? onDelete;
+
+  Future<void> _openPicker(BuildContext context) async {
+    if (!enabled) {
+      return;
+    }
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (context) => _ExercisePickerSheet(
+        exercises: exercises,
+        selectedExerciseId: selected?.id,
+        onEdit: onEdit,
+        onDelete: onDelete,
+      ),
+    );
+    if (picked != null) {
+      onChanged(picked);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => _openPicker(context),
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: enabled ? Colors.white : const Color(0xFFF3F6FA),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: errorText == null
+                    ? const Color(0xFFE1E8F2)
+                    : colorScheme.error,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F2FF),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(Icons.tune_rounded, color: colorScheme.primary),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '운동',
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(color: const Color(0xFF6B7280)),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        selected?.name ?? placeholder,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: enabled
+                              ? const Color(0xFF111827)
+                              : const Color(0xFF9CA3AF),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: enabled
+                      ? const Color(0xFF4B5563)
+                      : const Color(0xFF9CA3AF),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (errorText != null) ...[
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: Text(
+              errorText!,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: colorScheme.error),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ExercisePickerSheet extends StatelessWidget {
+  const _ExercisePickerSheet({
+    required this.exercises,
+    required this.selectedExerciseId,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final List<Exercise> exercises;
+  final int? selectedExerciseId;
+  final ValueChanged<Exercise>? onEdit;
+  final ValueChanged<Exercise>? onDelete;
+
+  Future<void> _openActions(BuildContext context, Exercise exercise) async {
+    final action = await showModalBottomSheet<_ExerciseAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                exercise.name,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: const Icon(Icons.edit_rounded),
+                title: const Text('운동 수정'),
+                onTap: () => Navigator.of(context).pop(_ExerciseAction.edit),
+              ),
+              ListTile(
+                leading: Icon(
+                  Icons.delete_outline_rounded,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                title: Text(
+                  '운동 삭제',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+                onTap: () => Navigator.of(context).pop(_ExerciseAction.delete),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (action == null || !context.mounted) {
+      return;
+    }
+    Navigator.of(context).pop();
+    switch (action) {
+      case _ExerciseAction.edit:
+        onEdit?.call(exercise);
+      case _ExerciseAction.delete:
+        onDelete?.call(exercise);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.62,
+      minChildSize: 0.36,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) => ListView.separated(
+        controller: scrollController,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        itemCount: exercises.length + 1,
+        separatorBuilder: (_, index) =>
+            index == 0 ? const SizedBox(height: 12) : const SizedBox(height: 8),
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return Text(
+              '운동 선택',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
+            );
+          }
+          final exercise = exercises[index - 1];
+          final selected = exercise.id == selectedExerciseId;
+          return Material(
+            color: selected ? const Color(0xFFE8F2FF) : Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            child: InkWell(
+              onTap: () => Navigator.of(context).pop(exercise.id),
+              borderRadius: BorderRadius.circular(18),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: selected
+                        ? colorScheme.primary
+                        : const Color(0xFFE8EEF6),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          Text(
+                            exercise.name,
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          if (exercise.isCustom)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE8F2FF),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                '내 운동',
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: colorScheme.primary,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (selected)
+                      Icon(
+                        Icons.check_circle_rounded,
+                        color: colorScheme.primary,
+                      ),
+                    if (exercise.isCustom)
+                      IconButton(
+                        onPressed: onEdit == null && onDelete == null
+                            ? null
+                            : () => _openActions(context, exercise),
+                        icon: const Icon(Icons.more_vert_rounded),
+                        tooltip: '내 운동 관리',
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+enum _ExerciseAction { edit, delete }
 
 class _WorkoutFormHero extends StatelessWidget {
   const _WorkoutFormHero({

@@ -111,6 +111,63 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1500));
   });
 
+  testWidgets('custom exercise can be edited and deleted from picker', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appDatabaseProvider.overrideWithValue(database)],
+        child: const MyApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.add).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('새 운동 등록'));
+    await tester.pumpAndSettle();
+    await pickSheetOption(tester, placeholder: '운동 부위 선택', option: '가슴');
+    await tester.enterText(find.widgetWithText(TextFormField, '운동명'), '덤벨 플라이');
+    await tester.tap(find.widgetWithText(FilledButton, '등록'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('덤벨 플라이'));
+    await tester.pumpAndSettle();
+    expect(find.text('내 운동'), findsOneWidget);
+    await tester.tap(find.byTooltip('내 운동 관리'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('운동 수정'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, '운동명'),
+      '덤벨 플라이 수정',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, '수정'));
+    await tester.pumpAndSettle();
+    expect(find.text('운동을 수정했습니다.'), findsOneWidget);
+
+    await tester.tap(find.text('덤벨 플라이 수정'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('내 운동 관리'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('운동 삭제'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '삭제'));
+    await tester.pumpAndSettle();
+
+    final repository = ExerciseRepository(database);
+    final chest = (await repository.getBodyParts()).firstWhere(
+      (part) => part.name == '가슴',
+    );
+    final exercise = await repository.findExerciseByName(
+      bodyPartId: chest.id,
+      name: '덤벨 플라이 수정',
+    );
+    expect(exercise, isNull);
+
+    await tester.pump(const Duration(milliseconds: 1500));
+  });
+
   testWidgets(
     'custom exercise registration stays visible above keyboard on small screens',
     (tester) async {
