@@ -404,15 +404,20 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('운동 삭제'),
+        title: Row(
+          children: [
+            const Expanded(child: Text('운동 삭제')),
+            IconButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              icon: const Icon(Icons.close_rounded),
+              tooltip: '닫기',
+            ),
+          ],
+        ),
         content: Text(
           '내 운동 `${exercise.name}`을 삭제할까요?\n기록에서 사용 중이면 삭제할 수 없습니다.',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('취소'),
-          ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
             child: const Text('삭제'),
