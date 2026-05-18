@@ -289,6 +289,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ).push(MaterialPageRoute<void>(builder: (_) => const StatsScreen()));
   }
 
+  Future<void> _openWorkoutRecords() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const _WorkoutRecordListScreen()),
+    );
+    if (!mounted || changed != true) {
+      return;
+    }
+    _refreshRecords();
+  }
+
   Future<void> _openProfileSettings() async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const ProfileSettingsScreen()),
@@ -333,6 +343,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           _HomeHero(
                             records: weeklyRecords,
                             totalSetCount: summary?.totalSetCount ?? 0,
+                            onRecordsTap: _openWorkoutRecords,
                             onProfileTap: _openProfileSettings,
                             onStatsTap: _openStats,
                           ),
@@ -380,6 +391,289 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
+class _WorkoutRecordListScreen extends ConsumerStatefulWidget {
+  const _WorkoutRecordListScreen();
+
+  @override
+  ConsumerState<_WorkoutRecordListScreen> createState() =>
+      _WorkoutRecordListScreenState();
+}
+
+class _WorkoutRecordListScreenState
+    extends ConsumerState<_WorkoutRecordListScreen> {
+  static const int _recordsPageSize = 20;
+
+  final ScrollController _recordsScrollController = ScrollController();
+  final List<WorkoutRecord> _records = [];
+  late Future<double?> _bodyWeightKgFuture;
+  bool _isInitialRecordsLoading = true;
+  bool _isLoadingMoreRecords = false;
+  bool _hasMoreRecords = true;
+  Object? _recordsLoadError;
+  bool _changed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _recordsScrollController.addListener(_onRecordsScroll);
+    _bodyWeightKgFuture = ref
+        .read(userProfileServiceProvider)
+        .getBodyWeightKg();
+    _loadInitialRecords();
+  }
+
+  @override
+  void dispose() {
+    _recordsScrollController
+      ..removeListener(_onRecordsScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  Future<List<WorkoutRecord>> _loadRecordsPage({
+    DateTime? beforeDate,
+    int? beforeSessionId,
+  }) {
+    return ref
+        .read(workoutServiceProvider)
+        .getWorkoutRecords(
+          limit: _recordsPageSize + 1,
+          beforeDate: beforeDate,
+          beforeSessionId: beforeSessionId,
+        );
+  }
+
+  Future<void> _loadInitialRecords() async {
+    setState(() {
+      _isInitialRecordsLoading = true;
+      _isLoadingMoreRecords = false;
+      _hasMoreRecords = true;
+      _recordsLoadError = null;
+      _records.clear();
+    });
+
+    try {
+      final page = await _loadRecordsPage();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _records
+          ..clear()
+          ..addAll(page.take(_recordsPageSize));
+        _hasMoreRecords = page.length > _recordsPageSize;
+        _isInitialRecordsLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _recordsLoadError = error;
+        _isInitialRecordsLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadMoreRecords() async {
+    if (_isInitialRecordsLoading ||
+        _isLoadingMoreRecords ||
+        !_hasMoreRecords ||
+        _records.isEmpty) {
+      return;
+    }
+
+    final lastRecord = _records.last;
+    setState(() {
+      _isLoadingMoreRecords = true;
+      _recordsLoadError = null;
+    });
+
+    try {
+      final page = await _loadRecordsPage(
+        beforeDate: lastRecord.session.workoutDate,
+        beforeSessionId: lastRecord.session.id,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _records.addAll(page.take(_recordsPageSize));
+        _hasMoreRecords = page.length > _recordsPageSize;
+        _isLoadingMoreRecords = false;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _recordsLoadError = error;
+        _isLoadingMoreRecords = false;
+      });
+    }
+  }
+
+  void _onRecordsScroll() {
+    if (!_recordsScrollController.hasClients) {
+      return;
+    }
+    final position = _recordsScrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 320) {
+      _loadMoreRecords();
+    }
+  }
+
+  Future<void> _openAddWorkout() async {
+    final saved = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const AddWorkoutScreen()));
+    if (!mounted || saved != true) {
+      return;
+    }
+    _changed = true;
+    _loadInitialRecords();
+    CenteredToast.show(context, '운동 기록을 저장했습니다.');
+  }
+
+  Future<void> _openEditWorkout(_RecordEntryItem item) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AddWorkoutScreen.editing(
+          editSessionId: item.sessionId,
+          editingEntry: item.entry,
+          initialDate: item.date,
+          initialMemo: item.sessionMemo,
+        ),
+      ),
+    );
+    if (!mounted || saved != true) {
+      return;
+    }
+    _changed = true;
+    _loadInitialRecords();
+    CenteredToast.show(context, '수정되었습니다');
+  }
+
+  Future<void> _confirmDeleteWorkout(_RecordEntryItem item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('기록 삭제'),
+        content: Text('${item.entry.exercise.name} 기록을 삭제할까요?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) {
+      return;
+    }
+
+    try {
+      await ref
+          .read(workoutServiceProvider)
+          .deleteWorkoutEntry(
+            sessionId: item.sessionId,
+            entryId: item.entry.entry.id,
+          );
+      if (!mounted) {
+        return;
+      }
+      _changed = true;
+      _loadInitialRecords();
+      CenteredToast.show(context, '운동 기록을 삭제했습니다.');
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      CenteredToast.show(context, '삭제에 실패했습니다: $error');
+    }
+  }
+
+  void _close() {
+    Navigator.of(context).pop(_changed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          _close();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('운동 기록'),
+          leading: IconButton(
+            onPressed: _close,
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: '뒤로가기',
+          ),
+        ),
+        body: SafeArea(
+          child: _isInitialRecordsLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _recordsLoadError != null && _records.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('기록을 불러오지 못했습니다: $_recordsLoadError'),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: _loadInitialRecords,
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('다시 불러오기'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : _records.isEmpty
+              ? const _EmptyRecordsState()
+              : FutureBuilder<double?>(
+                  future: _bodyWeightKgFuture,
+                  builder: (context, weightSnapshot) => _WorkoutRecordList(
+                    records: _records,
+                    scrollController: _recordsScrollController,
+                    isLoadingMore: _isLoadingMoreRecords,
+                    hasMoreRecords: _hasMoreRecords,
+                    loadMoreError: _recordsLoadError,
+                    onLoadMoreRetry: _loadMoreRecords,
+                    bodyWeightKg: weightSnapshot.data ?? 70,
+                    usesDefaultBodyWeight: weightSnapshot.data == null,
+                    focusedDate: null,
+                    focusRequestId: 0,
+                    onRecordTap: _openEditWorkout,
+                    onRecordDelete: _confirmDeleteWorkout,
+                  ),
+                ),
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _openAddWorkout,
+          icon: const Icon(Icons.add),
+          label: const Text('기록 추가'),
+        ),
+      ),
+    );
+  }
+}
+
 class _HomeSummary {
   const _HomeSummary({
     required this.weeklyRecords,
@@ -396,12 +690,14 @@ class _HomeHero extends StatelessWidget {
   const _HomeHero({
     required this.records,
     required this.totalSetCount,
+    required this.onRecordsTap,
     required this.onProfileTap,
     required this.onStatsTap,
   });
 
   final List<WorkoutRecord> records;
   final int totalSetCount;
+  final VoidCallback onRecordsTap;
   final VoidCallback onProfileTap;
   final VoidCallback onStatsTap;
 
@@ -461,28 +757,41 @@ class _HomeHero extends StatelessWidget {
           children: [
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.16),
-                    ),
-                  ),
-                  child: const Text(
-                    'Muscle Diary',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12,
+                Flexible(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.16),
+                        ),
+                      ),
+                      child: const Text(
+                        'Muscle Diary',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
+                _HeroIconButton(
+                  icon: Icons.event_note_rounded,
+                  tooltip: '운동 기록 전체보기',
+                  onTap: onRecordsTap,
+                ),
+                const SizedBox(width: 8),
                 _HeroIconButton(
                   icon: Icons.bar_chart_rounded,
                   tooltip: '통계',
@@ -562,6 +871,9 @@ class _HeroIconButton extends StatelessWidget {
       shape: const CircleBorder(),
       child: IconButton(
         onPressed: onTap,
+        constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+        padding: EdgeInsets.zero,
+        iconSize: 20,
         icon: Icon(icon, color: Colors.white),
         tooltip: tooltip,
       ),
@@ -620,9 +932,9 @@ class _EmptyRecordsState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Center(
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.all(28),
@@ -1211,9 +1523,7 @@ class _WorkoutRecordListState extends State<_WorkoutRecordList> {
               _RecordDateHeader() => Padding(
                 key: _dateHeaderKeys.putIfAbsent(
                   _dateKey(item.date),
-                  () => GlobalObjectKey(
-                    'record-date-header-${_dateKey(item.date)}',
-                  ),
+                  () => GlobalKey(),
                 ),
                 padding: const EdgeInsets.only(top: 16, bottom: 10),
                 child: Text(

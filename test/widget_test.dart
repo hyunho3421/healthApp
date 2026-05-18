@@ -281,6 +281,47 @@ void main() {
     expect(find.text('가볍게 시작'), findsOneWidget);
   });
 
+  testWidgets('opens dedicated workout record list from home hero', (
+    tester,
+  ) async {
+    final benchPress = (await database.select(database.exercises).get())
+        .firstWhere((exercise) => exercise.name == '벤치프레스');
+    await WorkoutService(WorkoutRepository(database)).saveWorkout(
+      WorkoutDraft(
+        workoutDate: DateTime(2026, 5, 16),
+        memo: '전용 페이지 확인',
+        entries: [
+          WorkoutEntryDraft(
+            exerciseId: benchPress.id,
+            sets: const [WorkoutSetDraft(weight: 60, reps: 10)],
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appDatabaseProvider.overrideWithValue(database)],
+        child: const MyApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('운동 기록 전체보기'), findsOneWidget);
+    await tester.tap(find.byTooltip('운동 기록 전체보기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('운동 기록'), findsOneWidget);
+    expect(find.text('전용 페이지 확인'), findsOneWidget);
+    expect(find.text('벤치프레스'), findsOneWidget);
+    expect(find.byTooltip('통계'), findsNothing);
+
+    await tester.tap(find.byTooltip('뒤로가기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Muscle Diary'), findsOneWidget);
+  });
+
   testWidgets(
     'shows daily summary card with volume entries sets and calories',
     (tester) async {
