@@ -1104,6 +1104,7 @@ class _PeriodMaxWeightChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final maxY = stats
         .map((stat) => stat.maxWeight)
         .fold<double>(0, (max, value) => value > max ? value : max);
@@ -1114,6 +1115,32 @@ class _PeriodMaxWeightChart extends StatelessWidget {
         maxY: safeMaxY,
         gridData: const FlGridData(show: true, drawVerticalLine: false),
         borderData: FlBorderData(show: false),
+        barTouchData: BarTouchData(
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipColor: (_) => colorScheme.inverseSurface,
+            tooltipBorderRadius: BorderRadius.circular(12),
+            tooltipPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 8,
+            ),
+            tooltipMargin: 10,
+            tooltipBorder: BorderSide(
+              color: colorScheme.outline.withValues(alpha: 0.28),
+            ),
+            fitInsideHorizontally: true,
+            fitInsideVertically: true,
+            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              return BarTooltipItem(
+                '${_formatNumber(rod.toY)}kg',
+                TextStyle(
+                  color: colorScheme.onInverseSurface,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                ),
+              );
+            },
+          ),
+        ),
         titlesData: FlTitlesData(
           topTitles: const AxisTitles(
             sideTitles: SideTitles(showTitles: false),
