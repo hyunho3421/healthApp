@@ -1601,8 +1601,24 @@ class _WorkoutDateSummaryCard extends StatelessWidget {
 
     return Card(
       key: ValueKey('record-date-summary-${_dateKey(item.date)}'),
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
+      margin: const EdgeInsets.only(bottom: 12),
+      color: const Color(0xFFEFF6FF),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: BorderSide(color: colorScheme.primary.withValues(alpha: 0.18)),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              colorScheme.primary.withValues(alpha: 0.10),
+              const Color(0xFFF8FBFF),
+            ],
+          ),
+        ),
         padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1613,12 +1629,12 @@ class _WorkoutDateSummaryCard extends StatelessWidget {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: colorScheme.primary.withValues(alpha: 0.10),
+                    color: colorScheme.primary,
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     Icons.bolt_rounded,
-                    color: colorScheme.primary,
+                    color: colorScheme.onPrimary,
                     size: 20,
                   ),
                 ),
@@ -1629,7 +1645,7 @@ class _WorkoutDateSummaryCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: colorScheme.onSurface,
+                      color: colorScheme.primary,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
