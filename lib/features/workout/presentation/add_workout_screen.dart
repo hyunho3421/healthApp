@@ -329,11 +329,15 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
   }
 
   Future<void> _pickDate() async {
+    if (_isEditMode) {
+      return;
+    }
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
+      locale: const Locale('ko', 'KR'),
     );
     if (picked == null || !mounted) {
       return;
@@ -434,10 +438,11 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
               _WorkoutFormHero(
                 title: _isEditMode ? '기록을 다듬어볼까요?' : '오늘의 운동을 남겨볼까요?',
                 subtitle: _isEditMode
-                    ? '수정한 내용은 기존 기록에 바로 반영됩니다.'
+                    ? '날짜는 유지하고 세트와 메모만 다듬을 수 있어요.'
                     : '부위와 운동을 고르고 세트만 입력하면 끝입니다.',
                 dateText: dateText,
-                onPickDate: _isSaving ? null : _pickDate,
+                onPickDate: _isEditMode || _isSaving ? null : _pickDate,
+                isDateLocked: _isEditMode,
               ),
               const SizedBox(height: 14),
               _FormSectionCard(
@@ -621,12 +626,14 @@ class _WorkoutFormHero extends StatelessWidget {
     required this.subtitle,
     required this.dateText,
     required this.onPickDate,
+    required this.isDateLocked,
   });
 
   final String title;
   final String subtitle;
   final String dateText;
   final VoidCallback? onPickDate;
+  final bool isDateLocked;
 
   @override
   Widget build(BuildContext context) {
@@ -675,8 +682,10 @@ class _WorkoutFormHero extends StatelessWidget {
               child: Row(
                 children: [
                   Icon(
-                    Icons.calendar_today_rounded,
-                    color: colorScheme.primary,
+                    isDateLocked
+                        ? Icons.lock_outline_rounded
+                        : Icons.calendar_today_rounded,
+                    color: isDateLocked ? Colors.white70 : colorScheme.primary,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -684,7 +693,7 @@ class _WorkoutFormHero extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '날짜',
+                          isDateLocked ? '날짜 · 수정 불가' : '날짜',
                           style: Theme.of(context).textTheme.labelSmall
                               ?.copyWith(color: Colors.white70),
                         ),
@@ -700,10 +709,11 @@ class _WorkoutFormHero extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: Colors.white70,
-                  ),
+                  if (!isDateLocked)
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: Colors.white70,
+                    ),
                 ],
               ),
             ),

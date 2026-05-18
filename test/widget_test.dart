@@ -824,6 +824,8 @@ void main() {
 
     expect(find.text('운동 기록 수정'), findsOneWidget);
     expect(find.text('2026.05.16'), findsOneWidget);
+    expect(find.text('날짜 · 수정 불가'), findsOneWidget);
+    expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
     expect(find.text('가슴'), findsWidgets);
     expect(find.text('벤치프레스'), findsOneWidget);
     expect(find.text('운동 기록 수정'), findsOneWidget);

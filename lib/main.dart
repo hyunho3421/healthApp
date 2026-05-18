@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'features/home/presentation/home_screen.dart';
@@ -19,6 +20,9 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: '근육 성장 일기',
+      locale: const Locale('ko', 'KR'),
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      supportedLocales: const [Locale('ko', 'KR'), Locale('en', 'US')],
       theme: ThemeData(
         useMaterial3: true,
         fontFamily: 'Noto Sans KR',

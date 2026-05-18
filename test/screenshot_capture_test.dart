@@ -47,7 +47,7 @@ void main() {
       matchesGoldenFile('goldens/current_stats.png'),
     );
 
-    await tester.pageBack();
+    await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.add));
