@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'root_shell.dart';
+import 'features/home/presentation/home_screen.dart';
 
 export 'features/home/presentation/home_screen.dart';
-export 'root_shell.dart';
 export 'features/profile/presentation/profile_settings_screen.dart';
 export 'features/workout/presentation/add_workout_screen.dart';
 
@@ -82,7 +81,7 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const RootShell(),
+      home: const HomeScreen(),
     );
   }
 }

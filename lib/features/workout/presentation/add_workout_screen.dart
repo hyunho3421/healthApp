@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/db/app_database.dart';
+import '../../../core/db/seed/workout_seed_data.dart';
 import '../../../core/models/exercise_type.dart';
 import '../../../core/widgets/centered_toast.dart';
 import '../../exercise/providers/exercise_providers.dart';
@@ -38,6 +39,7 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
   late Future<List<BodyPart>> _bodyPartsFuture;
   int? _selectedBodyPartId;
   String _selectedExerciseTypeId = defaultExerciseTypeId;
+  String? _selectedArmDetail;
   String? _errorText;
   bool _isSaving = false;
 
@@ -49,6 +51,7 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
     if (exercise != null) {
       _selectedBodyPartId = exercise.bodyPartId;
       _selectedExerciseTypeId = exercise.type;
+      _selectedArmDetail = exercise.armDetail;
       _nameController.text = exercise.name;
     }
   }
@@ -69,6 +72,12 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
       setState(() => _errorText = '부위를 선택해 주세요.');
       return;
     }
+    final isArm = await _isArmBodyPart(bodyPartId);
+    if (isArm && _selectedArmDetail == null) {
+      setState(() => _errorText = '팔 운동은 이두/삼두를 선택해 주세요.');
+      return;
+    }
+    final armDetail = isArm ? _selectedArmDetail : null;
 
     setState(() => _isSaving = true);
     try {
@@ -81,6 +90,7 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
               bodyPartId: bodyPartId,
               name: _nameController.text,
               type: _selectedExerciseTypeId,
+              armDetail: armDetail,
             );
       } else {
         await ref
@@ -90,6 +100,7 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
               bodyPartId: bodyPartId,
               name: _nameController.text,
               type: _selectedExerciseTypeId,
+              armDetail: armDetail,
             );
         exerciseId = exercise.id;
       }
@@ -127,6 +138,25 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
     }
   }
 
+  Future<bool> _isArmBodyPart(int bodyPartId) async {
+    final bodyParts = await _bodyPartsFuture;
+    return bodyParts.any(
+      (bodyPart) => bodyPart.id == bodyPartId && bodyPart.name == '팔',
+    );
+  }
+
+  void _selectDialogBodyPart(int? bodyPartId, List<BodyPart> bodyParts) {
+    final isArm = bodyParts.any(
+      (bodyPart) => bodyPart.id == bodyPartId && bodyPart.name == '팔',
+    );
+    setState(() {
+      _selectedBodyPartId = bodyPartId;
+      if (!isArm) {
+        _selectedArmDetail = null;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -160,18 +190,41 @@ class _AddExerciseDialogState extends ConsumerState<_AddExerciseDialog> {
                   return Text('부위를 불러오지 못했습니다: ${snapshot.error}');
                 }
                 final bodyParts = snapshot.data ?? const <BodyPart>[];
-                return _PickerField<int>(
-                  label: '부위',
-                  placeholder: '운동 부위 선택',
-                  value: _selectedBodyPartId,
-                  enabled: !_isSaving,
-                  options: [
-                    for (final bodyPart in bodyParts)
-                      _PickerOption(value: bodyPart.id, label: bodyPart.name),
+                final isArmSelected = bodyParts.any(
+                  (bodyPart) =>
+                      bodyPart.id == _selectedBodyPartId &&
+                      bodyPart.name == '팔',
+                );
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _PickerField<int>(
+                      label: '부위',
+                      placeholder: '운동 부위 선택',
+                      value: _selectedBodyPartId,
+                      enabled: !_isSaving,
+                      options: [
+                        for (final bodyPart in bodyParts)
+                          _PickerOption(
+                            value: bodyPart.id,
+                            label: _displayBodyPartName(bodyPart.name),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          _selectDialogBodyPart(value, bodyParts),
+                      validator: (value) =>
+                          value == null ? '부위를 선택해 주세요.' : null,
+                    ),
+                    if (isArmSelected) ...[
+                      const SizedBox(height: 12),
+                      _ArmDetailSelector(
+                        value: _selectedArmDetail,
+                        enabled: !_isSaving,
+                        onChanged: (value) =>
+                            setState(() => _selectedArmDetail = value),
+                      ),
+                    ],
                   ],
-                  onChanged: (value) =>
-                      setState(() => _selectedBodyPartId = value),
-                  validator: (value) => value == null ? '부위를 선택해 주세요.' : null,
                 );
               },
             ),
@@ -296,9 +349,24 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
   late DateTime _selectedDate;
   late Future<List<BodyPart>> _bodyPartsFuture;
   Future<List<Exercise>>? _exercisesFuture;
+  final Map<int, Exercise> _exercisesById = {};
   int? _selectedBodyPartId;
   int? _selectedExerciseId;
   bool _isSaving = false;
+
+  bool get _isSelectedExerciseBodyweight {
+    final selectedExerciseId = _selectedExerciseId;
+    if (selectedExerciseId == null) {
+      return false;
+    }
+    final selectedExercise = _exercisesById[selectedExerciseId];
+    if (selectedExercise != null) {
+      return selectedExercise.type == 'bodyweight';
+    }
+    final editingEntry = widget.editingEntry;
+    return editingEntry?.exercise.id == selectedExerciseId &&
+        editingEntry?.exercise.type == 'bodyweight';
+  }
 
   @override
   void initState() {
@@ -314,6 +382,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
 
     _selectedBodyPartId = editingEntry.bodyPart.id;
     _selectedExerciseId = editingEntry.exercise.id;
+    _exercisesById[editingEntry.exercise.id] = editingEntry.exercise;
     _exercisesFuture = ref
         .read(exerciseServiceProvider)
         .getExercises(bodyPartId: _selectedBodyPartId);
@@ -345,6 +414,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     setState(() {
       _selectedBodyPartId = bodyPartId;
       _selectedExerciseId = null;
+      _exercisesById.clear();
       _exercisesFuture = bodyPartId == null
           ? null
           : ref
@@ -511,7 +581,9 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
             sets: [
               for (final set in _sets)
                 WorkoutSetDraft(
-                  weight: double.parse(set.weightController.text),
+                  weight: _isSelectedExerciseBodyweight
+                      ? 0
+                      : double.parse(set.weightController.text),
                   reps: int.parse(set.repsController.text),
                   isWarmup: set.isWarmup,
                 ),
@@ -552,6 +624,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
   Widget build(BuildContext context) {
     final dateText = DateFormat('yyyy.MM.dd').format(_selectedDate);
     final colorScheme = Theme.of(context).colorScheme;
+    final isBodyweightExercise = _isSelectedExerciseBodyweight;
 
     return Scaffold(
       appBar: AppBar(title: Text(_isEditMode ? '운동 기록 수정' : '운동 기록 추가')),
@@ -597,7 +670,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                             for (final bodyPart in bodyParts)
                               _PickerOption(
                                 value: bodyPart.id,
-                                label: bodyPart.name,
+                                label: _displayBodyPartName(bodyPart.name),
                               ),
                           ],
                           onChanged: _selectBodyPart,
@@ -613,6 +686,15 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                       enabled: !_isSaving && _selectedBodyPartId != null,
                       onChanged: (value) =>
                           setState(() => _selectedExerciseId = value),
+                      onLoaded: (exercises) {
+                        _exercisesById
+                          ..clear()
+                          ..addEntries(
+                            exercises.map(
+                              (exercise) => MapEntry(exercise.id, exercise),
+                            ),
+                          );
+                      },
                       onEdit: _isSaving ? null : _openEditExercise,
                       onDelete: _isSaving ? null : _deleteExercise,
                     ),
@@ -644,6 +726,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                         setNumber: index + 1,
                         input: _sets[index],
                         enabled: !_isSaving,
+                        isBodyweightExercise: isBodyweightExercise,
                         onWarmupChanged: (value) => setState(
                           () => _sets[index].isWarmup = value ?? false,
                         ),
@@ -695,6 +778,7 @@ class _ExerciseDropdown extends StatelessWidget {
     required this.selectedExerciseId,
     required this.enabled,
     required this.onChanged,
+    required this.onLoaded,
     required this.onEdit,
     required this.onDelete,
   });
@@ -703,6 +787,7 @@ class _ExerciseDropdown extends StatelessWidget {
   final int? selectedExerciseId;
   final bool enabled;
   final ValueChanged<int?> onChanged;
+  final ValueChanged<List<Exercise>> onLoaded;
   final ValueChanged<Exercise>? onEdit;
   final ValueChanged<Exercise>? onDelete;
 
@@ -731,6 +816,7 @@ class _ExerciseDropdown extends StatelessWidget {
           return Text('운동을 불러오지 못했습니다: ${snapshot.error}');
         }
         final exercises = snapshot.data ?? const [];
+        onLoaded(exercises);
         final effectiveExerciseId =
             exercises.any((exercise) => exercise.id == selectedExerciseId)
             ? selectedExerciseId
@@ -873,7 +959,9 @@ class _ExercisePickerFieldBody extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        selected?.name ?? placeholder,
+                        selected == null
+                            ? placeholder
+                            : _exerciseDisplayName(selected!),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
@@ -1027,7 +1115,7 @@ class _ExercisePickerSheet extends StatelessWidget {
                         runSpacing: 4,
                         children: [
                           Text(
-                            exercise.name,
+                            _exerciseDisplayName(exercise),
                             style: Theme.of(context).textTheme.titleSmall
                                 ?.copyWith(fontWeight: FontWeight.w800),
                           ),
@@ -1073,6 +1161,57 @@ class _ExercisePickerSheet extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+class _ArmDetailSelector extends StatelessWidget {
+  const _ArmDetailSelector({
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final String? value;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('팔 세부 부위', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final option in const [
+              (id: armDetailBiceps, label: '이두'),
+              (id: armDetailTriceps, label: '삼두'),
+            ])
+              ChoiceChip(
+                label: Text(option.label),
+                selected: value == option.id,
+                showCheckmark: false,
+                selectedColor: const Color(0xFFE8F2FF),
+                side: BorderSide(
+                  color: value == option.id
+                      ? const Color(0xFF3182F6)
+                      : const Color(0xFFE1E8F2),
+                ),
+                onSelected: enabled
+                    ? (selected) {
+                        if (selected) {
+                          onChanged(option.id);
+                        }
+                      }
+                    : null,
+              ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -1500,6 +1639,7 @@ class _SetInputRow extends StatelessWidget {
     required this.setNumber,
     required this.input,
     required this.enabled,
+    required this.isBodyweightExercise,
     required this.onWarmupChanged,
     required this.onRemove,
   });
@@ -1507,6 +1647,7 @@ class _SetInputRow extends StatelessWidget {
   final int setNumber;
   final _SetInput input;
   final bool enabled;
+  final bool isBodyweightExercise;
   final ValueChanged<bool?> onWarmupChanged;
   final VoidCallback onRemove;
 
@@ -1524,23 +1665,25 @@ class _SetInputRow extends StatelessWidget {
               child: Text('$setNumber세트'),
             ),
           ),
-          Expanded(
-            child: TextFormField(
-              controller: input.weightController,
-              enabled: enabled,
-              onTapOutside: (_) =>
-                  FocusManager.instance.primaryFocus?.unfocus(),
-              decoration: const InputDecoration(
-                labelText: '무게(kg)',
-                border: OutlineInputBorder(),
+          if (!isBodyweightExercise) ...[
+            Expanded(
+              child: TextFormField(
+                controller: input.weightController,
+                enabled: enabled,
+                onTapOutside: (_) =>
+                    FocusManager.instance.primaryFocus?.unfocus(),
+                decoration: const InputDecoration(
+                  labelText: '무게(kg)',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                validator: _validateWeight,
               ),
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              validator: _validateWeight,
             ),
-          ),
-          const SizedBox(width: 8),
+            const SizedBox(width: 8),
+          ],
           Expanded(
             child: TextFormField(
               controller: input.repsController,
@@ -1626,3 +1769,18 @@ String? _trimmedOrNull(String value) {
   final trimmed = value.trim();
   return trimmed.isEmpty ? null : trimmed;
 }
+
+String _exerciseDisplayName(Exercise exercise) {
+  final label = _armDetailLabel(exercise.armDetail);
+  return label == null ? exercise.name : '${exercise.name} · $label';
+}
+
+String? _armDetailLabel(String? armDetail) {
+  return switch (armDetail) {
+    armDetailBiceps => '이두',
+    armDetailTriceps => '삼두',
+    _ => null,
+  };
+}
+
+String _displayBodyPartName(String name) => name == '코어' ? '복근' : name;

@@ -34,7 +34,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -57,6 +57,18 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 5) {
         await m.createTable(favoriteExercises);
+      }
+      if (from < 6) {
+        await customStatement(
+          "UPDATE body_parts SET name = '복근' "
+          "WHERE name = '코어' "
+          "AND NOT EXISTS (SELECT 1 FROM body_parts WHERE name = '복근')",
+        );
+      }
+      if (from < 7) {
+        await customStatement(
+          'ALTER TABLE exercises ADD COLUMN arm_detail TEXT',
+        );
       }
     },
     beforeOpen: (details) async {
@@ -93,6 +105,7 @@ class AppDatabase extends _$AppDatabase {
           bodyPartId: bodyPartId,
           name: seed.name,
           type: seed.type,
+          armDetail: Value(seed.armDetail),
           isCustom: const Value(false),
         );
         await into(exercises).insert(

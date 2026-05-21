@@ -1,6 +1,7 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:muscle_growth_diary/core/db/app_database.dart';
+import 'package:muscle_growth_diary/core/db/seed/workout_seed_data.dart';
 import 'package:muscle_growth_diary/features/exercise/data/exercise_repository.dart';
 import 'package:muscle_growth_diary/features/workout/application/workout_service.dart';
 import 'package:muscle_growth_diary/features/workout/data/workout_repository.dart';
@@ -50,6 +51,58 @@ void main() {
         ),
         throwsStateError,
       );
+    },
+  );
+
+  test('adds custom arm exercise with required arm detail', () async {
+    final arm = (await repository.getBodyParts()).firstWhere(
+      (part) => part.name == '팔',
+    );
+
+    expect(
+      () => repository.addCustomExercise(
+        bodyPartId: arm.id,
+        name: '바벨 컬',
+        type: defaultExerciseTypeId,
+      ),
+      throwsArgumentError,
+    );
+
+    final id = await repository.addCustomExercise(
+      bodyPartId: arm.id,
+      name: '바벨 컬',
+      type: defaultExerciseTypeId,
+      armDetail: armDetailBiceps,
+    );
+
+    final exercise = await repository.findExerciseById(id);
+    expect(exercise?.armDetail, armDetailBiceps);
+  });
+
+  test(
+    'clears arm detail when custom exercise is moved away from arms',
+    () async {
+      final parts = await repository.getBodyParts();
+      final arm = parts.firstWhere((part) => part.name == '팔');
+      final chest = parts.firstWhere((part) => part.name == '가슴');
+      final customId = await repository.addCustomExercise(
+        bodyPartId: arm.id,
+        name: '해머 컬',
+        type: defaultExerciseTypeId,
+        armDetail: armDetailBiceps,
+      );
+
+      await repository.updateCustomExercise(
+        id: customId,
+        bodyPartId: chest.id,
+        name: '해머 컬',
+        type: defaultExerciseTypeId,
+        armDetail: armDetailBiceps,
+      );
+
+      final updated = await repository.findExerciseById(customId);
+      expect(updated?.bodyPartId, chest.id);
+      expect(updated?.armDetail, isNull);
     },
   );
 

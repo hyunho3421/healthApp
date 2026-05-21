@@ -1,12 +1,19 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/db/app_database.dart';
+import '../../../core/db/seed/workout_seed_data.dart';
 import '../../../core/models/exercise_type.dart';
 import '../../../core/widgets/centered_toast.dart';
 import '../../profile/providers/user_profile_providers.dart';
+import '../../stats/presentation/stats_screen.dart';
 import '../../workout/models/workout_record.dart';
 import '../../workout/presentation/add_workout_screen.dart';
 import '../../workout/providers/workout_providers.dart';
@@ -19,49 +26,12 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  static const int _recordsPageSize = 20;
-
-  final ScrollController _recordsScrollController = ScrollController();
-  final List<WorkoutRecord> _records = [];
   late Future<_HomeSummary> _homeSummaryFuture;
-  late Future<double?> _bodyWeightKgFuture;
-  DateTime? _focusedWorkoutDate;
-  int _focusRequestId = 0;
-  bool _isInitialRecordsLoading = true;
-  bool _isLoadingMoreRecords = false;
-  bool _hasMoreRecords = true;
-  Object? _recordsLoadError;
 
   @override
   void initState() {
     super.initState();
-    _recordsScrollController.addListener(_onRecordsScroll);
     _homeSummaryFuture = _loadHomeSummary();
-    _bodyWeightKgFuture = ref
-        .read(userProfileServiceProvider)
-        .getBodyWeightKg();
-    _loadInitialRecords();
-  }
-
-  @override
-  void dispose() {
-    _recordsScrollController
-      ..removeListener(_onRecordsScroll)
-      ..dispose();
-    super.dispose();
-  }
-
-  Future<List<WorkoutRecord>> _loadRecordsPage({
-    DateTime? beforeDate,
-    int? beforeSessionId,
-  }) {
-    return ref
-        .read(workoutServiceProvider)
-        .getWorkoutRecords(
-          limit: _recordsPageSize + 1,
-          beforeDate: beforeDate,
-          beforeSessionId: beforeSessionId,
-        );
   }
 
   Future<_HomeSummary> _loadHomeSummary() async {
@@ -89,92 +59,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Future<void> _loadInitialRecords() async {
-    setState(() {
-      _homeSummaryFuture = _loadHomeSummary();
-      _isInitialRecordsLoading = true;
-      _isLoadingMoreRecords = false;
-      _hasMoreRecords = true;
-      _recordsLoadError = null;
-      _records.clear();
-    });
-
-    try {
-      final page = await _loadRecordsPage();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _records
-          ..clear()
-          ..addAll(page.take(_recordsPageSize));
-        _hasMoreRecords = page.length > _recordsPageSize;
-        _isInitialRecordsLoading = false;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _recordsLoadError = error;
-        _isInitialRecordsLoading = false;
-      });
-    }
-  }
-
-  void _refreshRecords() {
+  void _refreshHome() {
     if (!mounted) {
       return;
     }
-    _loadInitialRecords();
-  }
-
-  Future<void> _loadMoreRecords() async {
-    if (_isInitialRecordsLoading ||
-        _isLoadingMoreRecords ||
-        !_hasMoreRecords ||
-        _records.isEmpty) {
-      return;
-    }
-
-    final lastRecord = _records.last;
     setState(() {
-      _isLoadingMoreRecords = true;
-      _recordsLoadError = null;
+      _homeSummaryFuture = _loadHomeSummary();
     });
-
-    try {
-      final page = await _loadRecordsPage(
-        beforeDate: lastRecord.session.workoutDate,
-        beforeSessionId: lastRecord.session.id,
-      );
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _records.addAll(page.take(_recordsPageSize));
-        _hasMoreRecords = page.length > _recordsPageSize;
-        _isLoadingMoreRecords = false;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _recordsLoadError = error;
-        _isLoadingMoreRecords = false;
-      });
-    }
-  }
-
-  void _onRecordsScroll() {
-    if (!_recordsScrollController.hasClients) {
-      return;
-    }
-    final position = _recordsScrollController.position;
-    if (position.pixels >= position.maxScrollExtent - 320) {
-      _loadMoreRecords();
-    }
   }
 
   Future<void> _openAddWorkout() async {
@@ -184,187 +75,86 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!mounted || saved != true) {
       return;
     }
-    notifyWorkoutChanged(ref);
-    _refreshRecords();
+    _refreshHome();
     CenteredToast.show(context, '운동 기록을 저장했습니다.');
   }
 
-  void _focusWorkoutDate(DateTime date) {
-    _focusWorkoutDateAfterLoading(date);
+  void _openStats() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const StatsScreen()));
   }
 
-  Future<void> _focusWorkoutDateAfterLoading(DateTime date) async {
-    final targetDate = DateTime(date.year, date.month, date.day);
-    while (_hasMoreRecords &&
-        !_records.any(
-          (record) => _isSameDay(record.session.workoutDate, targetDate),
-        )) {
-      final lastRecord = _records.isEmpty ? null : _records.last;
-      if (lastRecord != null &&
-          lastRecord.session.workoutDate.isBefore(targetDate)) {
-        break;
-      }
-      await _loadMoreRecords();
-      if (_recordsLoadError != null) {
-        break;
-      }
-    }
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _focusedWorkoutDate = targetDate;
-      _focusRequestId += 1;
-    });
-  }
-
-  Future<void> _openEditWorkout(_RecordEntryItem item) async {
-    final saved = await Navigator.of(context).push<bool>(
+  Future<void> _openWorkoutRecords({DateTime? focusedDate}) async {
+    final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => AddWorkoutScreen.editing(
-          editSessionId: item.sessionId,
-          editingEntry: item.entry,
-          initialDate: item.date,
-          initialMemo: item.sessionMemo,
+        builder: (_) => _WorkoutRecordListScreen(
+          initialFocusedDate: focusedDate == null
+              ? null
+              : DateTime(focusedDate.year, focusedDate.month, focusedDate.day),
         ),
       ),
     );
-    if (!mounted || saved != true) {
+    if (!mounted || changed != true) {
       return;
     }
-    notifyWorkoutChanged(ref);
-    _refreshRecords();
-    CenteredToast.show(context, '수정되었습니다');
-  }
-
-  Future<void> _confirmDeleteWorkout(_RecordEntryItem item) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('기록 삭제'),
-        content: Text('${item.entry.exercise.name} 기록을 삭제할까요?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('취소'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('삭제'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted || confirmed != true) {
-      return;
-    }
-
-    try {
-      await ref
-          .read(workoutServiceProvider)
-          .deleteWorkoutEntry(
-            sessionId: item.sessionId,
-            entryId: item.entry.entry.id,
-          );
-      if (!mounted) {
-        return;
-      }
-      notifyWorkoutChanged(ref);
-      _refreshRecords();
-      CenteredToast.show(context, '운동 기록을 삭제했습니다.');
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      CenteredToast.show(context, '삭제에 실패했습니다: $error');
-    }
+    _refreshHome();
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<int>(workoutChangeVersionProvider, (previous, next) {
-      if (previous != null && previous != next) {
-        _refreshRecords();
-      }
-    });
-    ref.listen<int>(userProfileChangeVersionProvider, (previous, next) {
-      if (previous != null && previous != next) {
-        setState(() {
-          _bodyWeightKgFuture = ref
-              .read(userProfileServiceProvider)
-              .getBodyWeightKg();
-        });
-      }
-    });
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
-        child: _isInitialRecordsLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _recordsLoadError != null && _records.isEmpty
-            ? Center(
+        child: FutureBuilder<_HomeSummary>(
+          future: _homeSummaryFuture,
+          builder: (context, summarySnapshot) {
+            if (summarySnapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (summarySnapshot.hasError) {
+              return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Text('기록을 불러오지 못했습니다: $_recordsLoadError'),
+                  child: Text('홈 정보를 불러오지 못했습니다: ${summarySnapshot.error}'),
                 ),
-              )
-            : Column(
+              );
+            }
+
+            final summary = summarySnapshot.data;
+            final weeklyRecords =
+                summary?.weeklyRecords ?? const <WorkoutRecord>[];
+            final monthlyRecords =
+                summary?.monthlyRecords ?? const <WorkoutRecord>[];
+
+            return RefreshIndicator(
+              onRefresh: () async {
+                setState(() {
+                  _homeSummaryFuture = _loadHomeSummary();
+                });
+                await _homeSummaryFuture;
+              },
+              child: ListView(
+                padding: const EdgeInsets.only(bottom: 96),
                 children: [
-                  FutureBuilder<_HomeSummary>(
-                    future: _homeSummaryFuture,
-                    builder: (context, summarySnapshot) {
-                      final summary = summarySnapshot.data;
-                      final weeklyRecords =
-                          summary?.weeklyRecords ?? const <WorkoutRecord>[];
-                      final monthlyRecords =
-                          summary?.monthlyRecords ?? const <WorkoutRecord>[];
-                      return Column(
-                        children: [
-                          _HomeHero(
-                            records: weeklyRecords,
-                            totalSetCount: summary?.totalSetCount ?? 0,
-                          ),
-                          _WeeklyBodyPartSummary(
-                            records: weeklyRecords,
-                            monthlyRecords: monthlyRecords,
-                            onDateTap: _focusWorkoutDate,
-                          ),
-                        ],
-                      );
-                    },
+                  _WeeklyBodyStatusCard(
+                    records: weeklyRecords,
+                    totalSetCount: summary?.totalSetCount ?? 0,
+                    onRecordsTap: _openWorkoutRecords,
+                    onStatsTap: _openStats,
                   ),
-                  Expanded(
-                    child: _records.isEmpty
-                        ? const _EmptyRecordsState()
-                        : FutureBuilder<double?>(
-                            future: _bodyWeightKgFuture,
-                            builder: (context, weightSnapshot) =>
-                                _WorkoutRecordList(
-                                  records: _records,
-                                  scrollController: _recordsScrollController,
-                                  isLoadingMore: _isLoadingMoreRecords,
-                                  hasMoreRecords: _hasMoreRecords,
-                                  loadMoreError: _recordsLoadError,
-                                  onLoadMoreRetry: _loadMoreRecords,
-                                  bodyWeightKg: weightSnapshot.data ?? 70,
-                                  usesDefaultBodyWeight:
-                                      weightSnapshot.data == null,
-                                  focusedDate: _focusedWorkoutDate,
-                                  focusRequestId: _focusRequestId,
-                                  onRecordTap: _openEditWorkout,
-                                  onRecordDelete: _confirmDeleteWorkout,
-                                ),
-                          ),
+                  _WeeklyBodyPartSummary(
+                    records: weeklyRecords,
+                    monthlyRecords: monthlyRecords,
+                    onDateTap: (date) => _openWorkoutRecords(focusedDate: date),
                   ),
                 ],
               ),
+            );
+          },
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'home-add-workout',
         onPressed: _openAddWorkout,
         icon: const Icon(Icons.add),
         label: const Text('기록 추가'),
@@ -373,18 +163,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-class WorkoutRecordListScreen extends ConsumerStatefulWidget {
-  const WorkoutRecordListScreen({super.key, this.isRootTab = false});
+class _WorkoutRecordListScreen extends ConsumerStatefulWidget {
+  const _WorkoutRecordListScreen({this.initialFocusedDate});
 
-  final bool isRootTab;
+  final DateTime? initialFocusedDate;
 
   @override
-  ConsumerState<WorkoutRecordListScreen> createState() =>
+  ConsumerState<_WorkoutRecordListScreen> createState() =>
       _WorkoutRecordListScreenState();
 }
 
 class _WorkoutRecordListScreenState
-    extends ConsumerState<WorkoutRecordListScreen> {
+    extends ConsumerState<_WorkoutRecordListScreen> {
   static const int _recordsPageSize = 20;
 
   final ScrollController _recordsScrollController = ScrollController();
@@ -395,6 +185,8 @@ class _WorkoutRecordListScreenState
   bool _hasMoreRecords = true;
   Object? _recordsLoadError;
   bool _changed = false;
+  DateTime? _focusedDate;
+  int _focusRequestId = 0;
 
   @override
   void initState() {
@@ -448,6 +240,7 @@ class _WorkoutRecordListScreenState
         _hasMoreRecords = page.length > _recordsPageSize;
         _isInitialRecordsLoading = false;
       });
+      await _focusInitialDateIfNeeded();
     } catch (error) {
       if (!mounted) {
         return;
@@ -459,12 +252,14 @@ class _WorkoutRecordListScreenState
     }
   }
 
-  Future<void> _loadMoreRecords() async {
+  Future<void> _loadMoreRecords() => _loadMoreRecordsPage();
+
+  Future<bool> _loadMoreRecordsPage() async {
     if (_isInitialRecordsLoading ||
         _isLoadingMoreRecords ||
         !_hasMoreRecords ||
         _records.isEmpty) {
-      return;
+      return false;
     }
 
     final lastRecord = _records.last;
@@ -479,22 +274,55 @@ class _WorkoutRecordListScreenState
         beforeSessionId: lastRecord.session.id,
       );
       if (!mounted) {
-        return;
+        return false;
       }
       setState(() {
         _records.addAll(page.take(_recordsPageSize));
         _hasMoreRecords = page.length > _recordsPageSize;
         _isLoadingMoreRecords = false;
       });
+      return page.isNotEmpty;
     } catch (error) {
       if (!mounted) {
-        return;
+        return false;
       }
       setState(() {
         _recordsLoadError = error;
         _isLoadingMoreRecords = false;
       });
+      return false;
     }
+  }
+
+  Future<void> _focusInitialDateIfNeeded() async {
+    final targetDate = widget.initialFocusedDate;
+    if (targetDate == null) {
+      return;
+    }
+
+    while (mounted &&
+        !_recordsContainDate(targetDate) &&
+        _hasMoreRecords &&
+        !_isLoadingMoreRecords) {
+      final loaded = await _loadMoreRecordsPage();
+      if (!loaded) {
+        break;
+      }
+    }
+
+    if (!mounted || !_recordsContainDate(targetDate)) {
+      return;
+    }
+    setState(() {
+      _focusedDate = targetDate;
+      _focusRequestId += 1;
+    });
+  }
+
+  bool _recordsContainDate(DateTime date) {
+    return _records.any(
+      (record) => _isSameDay(record.session.workoutDate, date),
+    );
   }
 
   void _onRecordsScroll() {
@@ -515,7 +343,6 @@ class _WorkoutRecordListScreenState
       return;
     }
     _changed = true;
-    notifyWorkoutChanged(ref);
     _loadInitialRecords();
     CenteredToast.show(context, '운동 기록을 저장했습니다.');
   }
@@ -535,7 +362,6 @@ class _WorkoutRecordListScreenState
       return;
     }
     _changed = true;
-    notifyWorkoutChanged(ref);
     _loadInitialRecords();
     CenteredToast.show(context, '수정되었습니다');
   }
@@ -577,7 +403,6 @@ class _WorkoutRecordListScreenState
         return;
       }
       _changed = true;
-      notifyWorkoutChanged(ref);
       _loadInitialRecords();
       CenteredToast.show(context, '운동 기록을 삭제했습니다.');
     } catch (error) {
@@ -594,89 +419,6 @@ class _WorkoutRecordListScreenState
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<int>(workoutChangeVersionProvider, (previous, next) {
-      if (previous != null && previous != next) {
-        _changed = true;
-        _loadInitialRecords();
-      }
-    });
-    ref.listen<int>(userProfileChangeVersionProvider, (previous, next) {
-      if (previous != null && previous != next) {
-        setState(() {
-          _bodyWeightKgFuture = ref
-              .read(userProfileServiceProvider)
-              .getBodyWeightKg();
-        });
-      }
-    });
-
-    final scaffold = Scaffold(
-      appBar: AppBar(
-        title: const Text('운동 기록'),
-        automaticallyImplyLeading: !widget.isRootTab,
-        leading: widget.isRootTab
-            ? null
-            : IconButton(
-                onPressed: _close,
-                icon: const Icon(Icons.arrow_back_rounded),
-                tooltip: '뒤로가기',
-              ),
-      ),
-      body: SafeArea(
-        child: _isInitialRecordsLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _recordsLoadError != null && _records.isEmpty
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('기록을 불러오지 못했습니다: $_recordsLoadError'),
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: _loadInitialRecords,
-                        icon: const Icon(Icons.refresh_rounded),
-                        label: const Text('다시 불러오기'),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            : _records.isEmpty
-            ? const _EmptyRecordsState()
-            : FutureBuilder<double?>(
-                future: _bodyWeightKgFuture,
-                builder: (context, weightSnapshot) => _WorkoutRecordList(
-                  records: _records,
-                  scrollController: _recordsScrollController,
-                  isLoadingMore: _isLoadingMoreRecords,
-                  hasMoreRecords: _hasMoreRecords,
-                  loadMoreError: _recordsLoadError,
-                  onLoadMoreRetry: _loadMoreRecords,
-                  bodyWeightKg: weightSnapshot.data ?? 70,
-                  usesDefaultBodyWeight: weightSnapshot.data == null,
-                  focusedDate: null,
-                  focusRequestId: 0,
-                  onRecordTap: _openEditWorkout,
-                  onRecordDelete: _confirmDeleteWorkout,
-                ),
-              ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: widget.isRootTab
-            ? 'records-tab-add-workout'
-            : 'records-route-add-workout',
-        onPressed: _openAddWorkout,
-        icon: const Icon(Icons.add),
-        label: const Text('기록 추가'),
-      ),
-    );
-
-    if (widget.isRootTab) {
-      return scaffold;
-    }
-
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -684,9 +426,131 @@ class _WorkoutRecordListScreenState
           _close();
         }
       },
-      child: scaffold,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('운동 기록'),
+          leading: IconButton(
+            onPressed: _close,
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: '뒤로가기',
+          ),
+        ),
+        body: SafeArea(
+          child: _isInitialRecordsLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _recordsLoadError != null && _records.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('기록을 불러오지 못했습니다: $_recordsLoadError'),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: _loadInitialRecords,
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('다시 불러오기'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : _records.isEmpty
+              ? const _EmptyRecordsState()
+              : FutureBuilder<double?>(
+                  future: _bodyWeightKgFuture,
+                  builder: (context, weightSnapshot) => _WorkoutRecordList(
+                    records: _records,
+                    scrollController: _recordsScrollController,
+                    isLoadingMore: _isLoadingMoreRecords,
+                    hasMoreRecords: _hasMoreRecords,
+                    loadMoreError: _recordsLoadError,
+                    onLoadMoreRetry: _loadMoreRecords,
+                    bodyWeightKg: weightSnapshot.data ?? 70,
+                    usesDefaultBodyWeight: weightSnapshot.data == null,
+                    focusedDate: _focusedDate,
+                    focusRequestId: _focusRequestId,
+                    onRecordTap: _openEditWorkout,
+                    onRecordDelete: _confirmDeleteWorkout,
+                  ),
+                ),
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _openAddWorkout,
+          icon: const Icon(Icons.add),
+          label: const Text('기록 추가'),
+        ),
+      ),
     );
   }
+}
+
+const _trackedBodyParts = <String>['가슴', '등', '어깨', '팔', '하체', '복근'];
+
+String _normalizeBodyPartName(String name) {
+  return name == '코어' ? '복근' : name;
+}
+
+Color _bodyPartStatusColor(int count) {
+  if (count >= 3) {
+    return const Color(0xFFEF4444);
+  }
+  if (count == 2) {
+    return const Color(0xFF3B82F6);
+  }
+  if (count == 1) {
+    return const Color(0xFFFACC15);
+  }
+  return const Color(0xFFE5E7EB);
+}
+
+Map<String, int> _weeklyBodyPartCounts(
+  List<WorkoutRecord> records, {
+  required DateTime weekStart,
+}) {
+  final weekEnd = weekStart.add(const Duration(days: 7));
+  final counts = {for (final part in _trackedBodyParts) part: 0};
+
+  for (final record in records) {
+    final workoutDate = DateTime(
+      record.session.workoutDate.year,
+      record.session.workoutDate.month,
+      record.session.workoutDate.day,
+    );
+    if (workoutDate.isBefore(weekStart) || !workoutDate.isBefore(weekEnd)) {
+      continue;
+    }
+
+    final partsInSession = <String>{};
+    final armDetailsInSession = <String>{};
+    for (final entry in record.entries) {
+      final bodyPartName = _normalizeBodyPartName(entry.bodyPart.name);
+      if (_trackedBodyParts.contains(bodyPartName)) {
+        partsInSession.add(bodyPartName);
+      }
+      if (bodyPartName == '팔') {
+        switch (entry.exercise.armDetail) {
+          case armDetailBiceps:
+            armDetailsInSession.add(_bodyPartCountArmBicepsKey);
+          case armDetailTriceps:
+            armDetailsInSession.add(_bodyPartCountArmTricepsKey);
+          default:
+            armDetailsInSession
+              ..add(_bodyPartCountArmBicepsKey)
+              ..add(_bodyPartCountArmTricepsKey);
+        }
+      }
+    }
+    for (final part in partsInSession) {
+      counts[part] = (counts[part] ?? 0) + 1;
+    }
+    for (final armDetail in armDetailsInSession) {
+      counts[armDetail] = (counts[armDetail] ?? 0) + 1;
+    }
+  }
+
+  return counts;
 }
 
 class _HomeSummary {
@@ -701,11 +565,18 @@ class _HomeSummary {
   final int totalSetCount;
 }
 
-class _HomeHero extends StatelessWidget {
-  const _HomeHero({required this.records, required this.totalSetCount});
+class _WeeklyBodyStatusCard extends StatelessWidget {
+  const _WeeklyBodyStatusCard({
+    required this.records,
+    required this.totalSetCount,
+    required this.onRecordsTap,
+    required this.onStatsTap,
+  });
 
   final List<WorkoutRecord> records;
   final int totalSetCount;
+  final VoidCallback onRecordsTap;
+  final VoidCallback onStatsTap;
 
   @override
   Widget build(BuildContext context) {
@@ -716,27 +587,13 @@ class _HomeHero extends StatelessWidget {
       today.day,
     ).subtract(Duration(days: today.weekday - DateTime.monday));
     final weekEnd = weekStart.add(const Duration(days: 7));
-    var weeklySessionCount = 0;
-    var weeklyVolume = 0.0;
-
-    for (final record in records) {
-      final workoutDate = DateTime(
-        record.session.workoutDate.year,
-        record.session.workoutDate.month,
-        record.session.workoutDate.day,
-      );
-      if (!workoutDate.isBefore(weekStart) && workoutDate.isBefore(weekEnd)) {
-        weeklySessionCount += 1;
-      }
-      for (final entry in record.entries) {
-        if (!workoutDate.isBefore(weekStart) && workoutDate.isBefore(weekEnd)) {
-          weeklyVolume += entry.sets.fold<double>(
-            0,
-            (sum, set) => sum + set.weight * set.reps,
-          );
-        }
-      }
-    }
+    final counts = _weeklyBodyPartCounts(records, weekStart: weekStart);
+    final trainedPartCount = counts.values.where((count) => count > 0).length;
+    final overtrainedPartCount = counts.values
+        .where((count) => count >= 3)
+        .length;
+    final weekLabel =
+        '${DateFormat('M.d').format(weekStart)} - ${DateFormat('M.d').format(weekEnd.subtract(const Duration(days: 1)))}';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
@@ -744,17 +601,14 @@ class _HomeHero extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF111827), Color(0xFF1D4ED8)],
-          ),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0xFFE8EEF6)),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF1D4ED8).withValues(alpha: 0.18),
-              blurRadius: 28,
-              offset: const Offset(0, 14),
+              color: const Color(0xFF111827).withValues(alpha: 0.05),
+              blurRadius: 24,
+              offset: const Offset(0, 12),
             ),
           ],
         ),
@@ -763,76 +617,93 @@ class _HomeHero extends StatelessWidget {
           children: [
             Row(
               children: [
-                Flexible(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.16),
-                        ),
-                      ),
-                      child: const Text(
-                        'Muscle Diary',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F2FF),
+                    borderRadius: BorderRadius.circular(18),
                   ),
+                  child: const Icon(
+                    Icons.accessibility_new_rounded,
+                    color: Color(0xFF3182F6),
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '이번 주 부위별 운동',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        weekLabel,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: onStatsTap,
+                  icon: const Icon(Icons.bar_chart_rounded),
+                  tooltip: '운동 통계',
                 ),
               ],
             ),
-            const SizedBox(height: 22),
-            Text(
-              records.isEmpty ? '첫 성장을 기록해볼까요?' : '오늘도 성장 기록하기',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.6,
-              ),
+            const SizedBox(height: 16),
+            _BodyMapFigure(counts: counts),
+            const SizedBox(height: 12),
+            _BodyPartStatusGrid(counts: counts),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: const [
+                _BodyPartLegendDot(color: Color(0xFFE5E7EB), label: '휴식'),
+                _BodyPartLegendDot(color: Color(0xFFFACC15), label: '1회'),
+                _BodyPartLegendDot(color: Color(0xFF3B82F6), label: '2회'),
+                _BodyPartLegendDot(color: Color(0xFFEF4444), label: '3회+ 과훈련'),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              records.isEmpty
-                  ? '운동, 세트, 볼륨을 깔끔하게 쌓아가면 변화가 보입니다.'
-                  : '이번 주 흐름을 확인하고 다음 운동을 이어가세요.',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.74),
-                height: 1.45,
-              ),
-            ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
-                  child: _HeroMetric(
-                    label: '이번 주',
-                    value: '$weeklySessionCount회',
+                  child: Text(
+                    overtrainedPartCount > 0
+                        ? '$overtrainedPartCount개 부위는 과훈련 주의가 필요해요.'
+                        : trainedPartCount == 0
+                        ? '아직 이번 주 운동 기록이 없어요.'
+                        : '$trainedPartCount개 부위를 이번 주에 자극했어요.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF4B5563),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _HeroMetric(
-                    label: '주간 볼륨',
-                    value: '${_formatVolume(weeklyVolume)}kg',
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _HeroMetric(label: '총 세트', value: '$totalSetCount'),
+                TextButton.icon(
+                  onPressed: onRecordsTap,
+                  icon: const Icon(Icons.event_note_rounded, size: 18),
+                  label: const Text('기록 보기'),
                 ),
               ],
+            ),
+            Text(
+              '누적 세트 $totalSetCount개',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: const Color(0xFF9CA3AF),
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         ),
@@ -841,47 +712,833 @@ class _HomeHero extends StatelessWidget {
   }
 }
 
-class _HeroMetric extends StatelessWidget {
-  const _HeroMetric({required this.label, required this.value});
+const _bodyMapReferenceAsset = 'assets/body_map/front_back_human_reference.png';
+const _bodyMapReferenceSize = Size(1536, 1024);
+const _bodyPartCountArmBicepsKey = '_arm:biceps';
+const _bodyPartCountArmTricepsKey = '_arm:triceps';
 
-  final String label;
-  final String value;
+class _BodyMapFigure extends StatefulWidget {
+  const _BodyMapFigure({required this.counts});
+
+  final Map<String, int> counts;
+
+  @override
+  State<_BodyMapFigure> createState() => _BodyMapFigureState();
+}
+
+class _BodyMapFigureState extends State<_BodyMapFigure> {
+  late final Future<ui.Image> _silhouetteMaskImageFuture = _loadUiImage(
+    _bodyMapReferenceAsset,
+  );
+
+  Future<ui.Image> _loadUiImage(String assetName) async {
+    final data = await rootBundle.load(assetName);
+    final completer = Completer<ui.Image>();
+    ui.decodeImageFromList(
+      data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      completer.complete,
+    );
+    return completer.future;
+  }
 
   @override
   Widget build(BuildContext context) {
+    return AspectRatio(
+      // Match the source PNG ratio so the front/back figures keep the intended
+      // organic proportions and the transparent bottom padding can hold labels.
+      aspectRatio: _bodyMapReferenceSize.width / _bodyMapReferenceSize.height,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFF6F9FC),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0xFFE8EEF6)),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.asset(
+                _bodyMapReferenceAsset,
+                fit: BoxFit.contain,
+                color: const Color(0xFFD1D8E3),
+                colorBlendMode: BlendMode.srcIn,
+                filterQuality: FilterQuality.high,
+              ),
+              FutureBuilder<ui.Image>(
+                future: _silhouetteMaskImageFuture,
+                builder: (context, snapshot) {
+                  final silhouetteMaskImage = snapshot.data;
+                  if (silhouetteMaskImage == null) {
+                    return const SizedBox.shrink();
+                  }
+                  return CustomPaint(
+                    painter: _BodyMapPainter(
+                      widget.counts,
+                      silhouetteMaskImage: silhouetteMaskImage,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _BodyRegion {
+  chest,
+  back,
+  shoulders,
+  biceps,
+  triceps,
+  abs,
+  thighs,
+  calves,
+}
+
+const Map<String, List<_BodyRegion>> _bodyPartRegionMap = {
+  '가슴': [_BodyRegion.chest],
+  '등': [_BodyRegion.back],
+  '어깨': [_BodyRegion.shoulders],
+  '팔': [_BodyRegion.biceps, _BodyRegion.triceps],
+  _bodyPartCountArmBicepsKey: [_BodyRegion.biceps],
+  _bodyPartCountArmTricepsKey: [_BodyRegion.triceps],
+  '복근': [_BodyRegion.abs],
+  // Keep the current six-part aggregation while separating the paint layer into
+  // extensible leg regions. Exercise-level mapping can later target only thighs
+  // or calves without changing the painter structure.
+  '하체': [_BodyRegion.thighs, _BodyRegion.calves],
+};
+
+class _BodyMapPainter extends CustomPainter {
+  const _BodyMapPainter(this.counts, {required this.silhouetteMaskImage});
+
+  final Map<String, int> counts;
+  final ui.Image silhouetteMaskImage;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final imageRect = _containedRect(_bodyMapReferenceSize, size);
+    final regionCounts = _regionCounts(counts);
+
+    Offset ip(double x, double y) => Offset(
+      imageRect.left + imageRect.width * (x / _bodyMapReferenceSize.width),
+      imageRect.top + imageRect.height * (y / _bodyMapReferenceSize.height),
+    );
+
+    double highlightAlphaFor(int count) {
+      if (count >= 3) {
+        return 0.74;
+      }
+      if (count == 2) {
+        return 0.64;
+      }
+      if (count == 1) {
+        return 0.54;
+      }
+      return 0;
+    }
+
+    Paint fillFor(int count) => Paint()
+      ..color = _bodyPartStatusColor(
+        count,
+      ).withValues(alpha: highlightAlphaFor(count))
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+
+    void drawRegion(
+      _BodyRegion region,
+      List<Path> shapes, {
+      required Path clip,
+    }) {
+      final count = regionCounts[region] ?? 0;
+      if (count == 0) {
+        return;
+      }
+
+      final fill = fillFor(count);
+      canvas.save();
+      canvas.clipPath(clip, doAntiAlias: true);
+      for (final path in shapes) {
+        canvas.drawPath(path, fill);
+      }
+      canvas.restore();
+    }
+
+    void drawAbsDetails({required Path clip}) {
+      final count = regionCounts[_BodyRegion.abs] ?? 0;
+      if (count == 0) {
+        return;
+      }
+
+      final line = Paint()
+        ..color = Colors.black.withValues(alpha: 0.22)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = imageRect.width * 0.0042
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round
+        ..isAntiAlias = true;
+
+      canvas.save();
+      canvas.clipPath(clip, doAntiAlias: true);
+      for (final path in _frontAbsDetailPaths(ip)) {
+        canvas.drawPath(path, line);
+      }
+      canvas.restore();
+    }
+
+    // Source measurements are taken against the 1536x1024 reference PNG:
+    // front bbox ~= x 281-590 y 56-971, back bbox ~= x 944-1254 y 56-971.
+    // Region paths remain anatomical masks. The approximate vector silhouettes
+    // are only a local guard; the overlay layer is finally intersected with the
+    // real reference PNG alpha via dstIn, so colored fills cannot render outside
+    // the asset silhouette even when vector control points differ by pixels.
+    final sourceRect = Rect.fromLTWH(
+      0,
+      0,
+      silhouetteMaskImage.width.toDouble(),
+      silhouetteMaskImage.height.toDouble(),
+    );
+    final frontClip = _frontSilhouetteMask(ip);
+    final backClip = _backSilhouetteMask(ip);
+
+    canvas.saveLayer(imageRect, Paint());
+    drawRegion(_BodyRegion.back, [_backLatPath(ip)], clip: backClip);
+    drawRegion(_BodyRegion.shoulders, _frontDeltoidPaths(ip), clip: frontClip);
+    drawRegion(_BodyRegion.shoulders, _backDeltoidPaths(ip), clip: backClip);
+    drawRegion(_BodyRegion.biceps, _frontBicepsPaths(ip), clip: frontClip);
+    drawRegion(_BodyRegion.triceps, _backTricepsPaths(ip), clip: backClip);
+    drawRegion(_BodyRegion.chest, _frontPectoralPaths(ip), clip: frontClip);
+    drawRegion(_BodyRegion.abs, [_frontAbsPath(ip)], clip: frontClip);
+    drawAbsDetails(clip: frontClip);
+    drawRegion(_BodyRegion.thighs, _frontThighPaths(ip), clip: frontClip);
+    drawRegion(_BodyRegion.thighs, _backThighPaths(ip), clip: backClip);
+    drawRegion(_BodyRegion.calves, _frontCalfPaths(ip), clip: frontClip);
+    drawRegion(_BodyRegion.calves, _backCalfPaths(ip), clip: backClip);
+    canvas.drawImageRect(
+      silhouetteMaskImage,
+      sourceRect,
+      imageRect,
+      Paint()
+        ..blendMode = BlendMode.dstIn
+        ..filterQuality = FilterQuality.high,
+    );
+    canvas.restore();
+
+    void drawCaption(String label, Offset center) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: label,
+          style: const TextStyle(
+            color: Color(0xFF64748B),
+            fontSize: 10,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.2,
+          ),
+        ),
+        textAlign: TextAlign.center,
+        textDirection: ui.TextDirection.ltr,
+      )..layout();
+      painter.paint(canvas, Offset(center.dx - painter.width / 2, center.dy));
+    }
+
+    drawCaption('전면', ip(436, 982));
+    drawCaption('후면', ip(1099, 982));
+  }
+
+  Path _frontSilhouetteMask(Offset Function(double x, double y) ip) =>
+      _smoothClosedPath([
+        ip(433, 70),
+        ip(382, 100),
+        ip(366, 178),
+        ip(300, 238),
+        ip(260, 356),
+        ip(286, 514),
+        ip(300, 690),
+        ip(334, 724),
+        ip(348, 892),
+        ip(373, 956),
+        ip(418, 958),
+        ip(433, 840),
+        ip(448, 958),
+        ip(493, 956),
+        ip(518, 892),
+        ip(532, 724),
+        ip(566, 690),
+        ip(580, 514),
+        ip(606, 356),
+        ip(566, 238),
+        ip(500, 178),
+        ip(484, 100),
+      ]);
+
+  Path _backSilhouetteMask(Offset Function(double x, double y) ip) =>
+      _smoothClosedPath([
+        ip(1099, 70),
+        ip(1048, 100),
+        ip(1032, 178),
+        ip(966, 238),
+        ip(926, 356),
+        ip(952, 514),
+        ip(966, 690),
+        ip(1000, 724),
+        ip(1014, 892),
+        ip(1039, 956),
+        ip(1084, 958),
+        ip(1099, 840),
+        ip(1114, 958),
+        ip(1159, 956),
+        ip(1184, 892),
+        ip(1198, 724),
+        ip(1232, 690),
+        ip(1246, 514),
+        ip(1272, 356),
+        ip(1232, 238),
+        ip(1166, 178),
+        ip(1150, 100),
+      ]);
+
+  List<Path> _frontPectoralPaths(Offset Function(double x, double y) ip) => [
+    // Traced from the user-provided red chest mask reference. Image-space red
+    // components were thresholded and mapped onto the front figure with the
+    // sternum centered at x ~= 433. The left/right masks are nudged
+    // closer together so the visible gap is about 20% narrower.
+    _closedPolygonPath([
+      ip(344, 295),
+      ip(353, 256),
+      ip(361, 245),
+      ip(409, 241),
+      ip(422, 244),
+      ip(426, 255),
+      ip(426, 278),
+      ip(422, 324),
+      ip(417, 329),
+      ip(405, 332),
+      ip(382, 329),
+      ip(374, 324),
+    ]),
+    _closedPolygonPath([
+      ip(440, 256),
+      ip(444, 244),
+      ip(449, 241),
+      ip(496, 243),
+      ip(505, 245),
+      ip(513, 255),
+      ip(522, 298),
+      ip(484, 329),
+      ip(461, 332),
+      ip(449, 329),
+      ip(444, 324),
+    ]),
+  ];
+
+  Path _frontAbsPath(Offset Function(double x, double y) ip) =>
+      _smoothClosedPath([
+        // Traced from the user-provided red abdominal mask reference. The
+        // source red component bbox was x=516..684, y=530..804 in the
+        // 1080x1457 PNG, mapped from that image silhouette bbox
+        // x=366..832, y=36..1433 onto the app front bbox x=281..590,
+        // y=56..971.
+        ip(408, 356),
+        ip(383, 372),
+        ip(386, 388),
+        ip(387, 405),
+        ip(386, 421),
+        ip(383, 437),
+        ip(380, 454),
+        ip(380, 470),
+        ip(383, 487),
+        ip(394, 503),
+        ip(408, 519),
+        ip(464, 519),
+        ip(478, 503),
+        ip(489, 487),
+        ip(492, 470),
+        ip(492, 454),
+        ip(489, 437),
+        ip(486, 421),
+        ip(485, 405),
+        ip(487, 388),
+        ip(489, 372),
+        ip(469, 356),
+      ]);
+
+  List<Path> _frontAbsDetailPaths(Offset Function(double x, double y) ip) =>
+      const <Path>[];
+
+  Path _backLatPath(
+    Offset Function(double x, double y) ip,
+  ) => _smoothClosedPath([
+    // Extracted from the user-provided red back mask:
+    // PNG red threshold bbox (490,298)-(701,672), single connected component.
+    // Mapped from source body bbox (365,38)-(829,1425) into the back figure
+    // reference bbox (944,56)-(1254,971).
+    ip(1058, 228),
+    ip(1138, 228),
+    ip(1150, 236),
+    ip(1168, 307),
+    ip(1155, 386),
+    ip(1160, 461),
+    ip(1152, 468),
+    ip(1114, 474),
+    ip(1084, 474),
+    ip(1051, 470),
+    ip(1036, 461),
+    ip(1041, 388),
+    ip(1028, 308),
+    ip(1045, 237),
+  ]);
+
+  List<Path> _frontDeltoidPaths(Offset Function(double x, double y) ip) => [
+    // Extracted from the user-provided red shoulder mask and transformed from
+    // screenshot body coordinates into the 1536x1024 reference asset space.
+    // The mask is intentionally full around the anterior deltoid cap so the
+    // shoulder fill reaches the clavicle side, outer shoulder edge, and natural
+    // lower insertion before the PNG alpha clip trims it to the silhouette.
+    _closedPolygonPath([
+      ip(350, 176),
+      ip(338, 184),
+      ip(306, 204),
+      ip(278, 236),
+      ip(254, 282),
+      ip(248, 315),
+      ip(264, 315),
+      ip(296, 316),
+      ip(324, 306),
+      ip(336, 294),
+      ip(344, 282),
+      ip(350, 258),
+      ip(352, 224),
+      ip(352, 194),
+    ]),
+    _closedPolygonPath([
+      ip(522, 176),
+      ip(528, 184),
+      ip(560, 204),
+      ip(588, 236),
+      ip(612, 282),
+      ip(618, 315),
+      ip(602, 308),
+      ip(570, 308),
+      ip(542, 301),
+      ip(530, 290),
+      ip(522, 282),
+      ip(516, 258),
+      ip(514, 224),
+      ip(514, 194),
+    ]),
+  ];
+
+  List<Path> _backDeltoidPaths(Offset Function(double x, double y) ip) => [
+    // Same shoulder masks as the front figure, translated to the back figure
+    // center so front/back shoulder highlights stay visually consistent.
+    // Lower rear-deltoid coverage is trimmed upward by ~20%.
+    _closedPolygonPath([
+      ip(1006, 176),
+      ip(996, 184),
+      ip(972, 204),
+      ip(944, 236),
+      ip(920, 286),
+      ip(914, 304),
+      ip(930, 312),
+      ip(962, 314),
+      ip(994, 304),
+      ip(996, 291),
+      ip(1004, 282),
+      ip(1008, 260),
+      ip(1008, 224),
+      ip(1008, 194),
+    ]),
+    _closedPolygonPath([
+      ip(1198, 176),
+      ip(1202, 184),
+      ip(1226, 204),
+      ip(1254, 236),
+      ip(1278, 286),
+      ip(1284, 304),
+      ip(1268, 304),
+      ip(1236, 304),
+      ip(1204, 296),
+      ip(1208, 288),
+      ip(1200, 282),
+      ip(1196, 260),
+      ip(1196, 224),
+      ip(1196, 194),
+    ]),
+  ];
+
+  List<Path> _frontBicepsPaths(Offset Function(double x, double y) ip) => [
+    // Extracted from the user-provided red front-biceps mask. Biceps are
+    // intentionally front-only; rear arm/triceps masks are unchanged.
+    // Latest adjustment trims the top by ~20% and bottom by ~10%.
+    _closedPolygonPath([
+      ip(308, 310),
+      ip(302, 310),
+      ip(302, 310),
+      ip(302, 310),
+      ip(302, 316),
+      ip(301, 323),
+      ip(300, 329),
+      ip(300, 336),
+      ip(298, 342),
+      ip(298, 349),
+      ip(298, 356),
+      ip(298, 362),
+      ip(297, 369),
+      ip(296, 376),
+      ip(296, 383),
+      ip(305, 385),
+      ip(324, 385),
+      ip(333, 385),
+      ip(335, 385),
+      ip(337, 383),
+      ip(339, 376),
+      ip(341, 369),
+      ip(343, 362),
+      ip(343, 356),
+      ip(343, 349),
+      ip(342, 342),
+      ip(341, 336),
+      ip(339, 329),
+      ip(338, 323),
+      ip(335, 316),
+      ip(333, 310),
+      ip(329, 310),
+      ip(324, 310),
+      ip(316, 310),
+    ]),
+    _closedPolygonPath([
+      ip(559, 310),
+      ip(565, 310),
+      ip(565, 310),
+      ip(565, 310),
+      ip(565, 316),
+      ip(567, 323),
+      ip(567, 329),
+      ip(569, 336),
+      ip(569, 342),
+      ip(569, 349),
+      ip(570, 356),
+      ip(570, 362),
+      ip(571, 369),
+      ip(572, 376),
+      ip(571, 383),
+      ip(562, 385),
+      ip(544, 385),
+      ip(535, 385),
+      ip(532, 385),
+      ip(530, 383),
+      ip(528, 376),
+      ip(526, 369),
+      ip(524, 362),
+      ip(524, 356),
+      ip(524, 349),
+      ip(525, 342),
+      ip(526, 336),
+      ip(528, 329),
+      ip(530, 323),
+      ip(532, 316),
+      ip(534, 310),
+      ip(538, 310),
+      ip(544, 310),
+      ip(550, 310),
+    ]),
+  ];
+
+  List<Path> _backTricepsPaths(Offset Function(double x, double y) ip) => [
+    // User-provided red triceps reference remapped from the marked 1080px
+    // body image onto the app's rear silhouette bbox, then nudged screen-right
+    // so the highlight sits closer to the visual center of each upper arm.
+    _smoothClosedPath([
+      ip(983, 286),
+      ip(995, 288),
+      ip(1005, 299),
+      ip(1012, 317),
+      ip(1015, 334),
+      ip(1013, 355),
+      ip(1009, 376),
+      ip(1002, 397),
+      ip(993, 416),
+      ip(982, 421),
+      ip(973, 418),
+      ip(970, 407),
+      ip(971, 390),
+      ip(974, 372),
+      ip(976, 352),
+      ip(978, 331),
+      ip(978, 311),
+      ip(979, 293),
+    ]),
+    _smoothClosedPath([
+      ip(1220, 286),
+      ip(1208, 288),
+      ip(1198, 299),
+      ip(1191, 317),
+      ip(1188, 334),
+      ip(1190, 355),
+      ip(1194, 376),
+      ip(1200, 397),
+      ip(1210, 416),
+      ip(1221, 421),
+      ip(1230, 418),
+      ip(1233, 407),
+      ip(1232, 390),
+      ip(1228, 372),
+      ip(1227, 352),
+      ip(1225, 331),
+      ip(1224, 311),
+      ip(1224, 293),
+    ]),
+  ];
+
+  List<Path> _frontThighPaths(Offset Function(double x, double y) ip) => [
+    _smoothClosedPath([
+      ip(354, 626),
+      ip(424, 616),
+      ip(422, 742),
+      ip(406, 790),
+      ip(358, 790),
+      ip(336, 704),
+    ]),
+    _smoothClosedPath([
+      ip(442, 616),
+      ip(512, 626),
+      ip(530, 704),
+      ip(508, 790),
+      ip(460, 790),
+      ip(444, 742),
+    ]),
+  ];
+
+  List<Path> _backThighPaths(Offset Function(double x, double y) ip) => [
+    _smoothClosedPath([
+      ip(1020, 626),
+      ip(1088, 616),
+      ip(1086, 742),
+      ip(1070, 790),
+      ip(1022, 790),
+      ip(1000, 704),
+    ]),
+    _smoothClosedPath([
+      ip(1110, 616),
+      ip(1178, 626),
+      ip(1196, 704),
+      ip(1174, 790),
+      ip(1126, 790),
+      ip(1110, 742),
+    ]),
+  ];
+
+  List<Path> _frontCalfPaths(Offset Function(double x, double y) ip) => [
+    _smoothClosedPath([
+      ip(358, 790),
+      ip(406, 790),
+      ip(410, 892),
+      ip(394, 920),
+      ip(356, 916),
+      ip(340, 846),
+    ]),
+    _smoothClosedPath([
+      ip(460, 790),
+      ip(508, 790),
+      ip(526, 846),
+      ip(510, 916),
+      ip(472, 920),
+      ip(456, 892),
+    ]),
+  ];
+
+  List<Path> _backCalfPaths(Offset Function(double x, double y) ip) => [
+    _smoothClosedPath([
+      ip(1022, 790),
+      ip(1070, 790),
+      ip(1074, 892),
+      ip(1058, 920),
+      ip(1020, 916),
+      ip(1004, 846),
+    ]),
+    _smoothClosedPath([
+      ip(1128, 790),
+      ip(1174, 790),
+      ip(1192, 846),
+      ip(1176, 916),
+      ip(1138, 920),
+      ip(1124, 892),
+    ]),
+  ];
+
+  Map<_BodyRegion, int> _regionCounts(Map<String, int> bodyPartCounts) {
+    final regionCounts = <_BodyRegion, int>{};
+    final hasArmDetailCounts =
+        (bodyPartCounts[_bodyPartCountArmBicepsKey] ?? 0) > 0 ||
+        (bodyPartCounts[_bodyPartCountArmTricepsKey] ?? 0) > 0;
+    for (final entry in bodyPartCounts.entries) {
+      final normalizedKey = _normalizeBodyPartName(entry.key);
+      if (normalizedKey == '팔' && hasArmDetailCounts) {
+        continue;
+      }
+      final regions = _bodyPartRegionMap[normalizedKey];
+      if (regions == null || entry.value <= 0) {
+        continue;
+      }
+      for (final region in regions) {
+        regionCounts[region] = math.max(regionCounts[region] ?? 0, entry.value);
+      }
+    }
+    return regionCounts;
+  }
+
+  Rect _containedRect(Size source, Size destination) {
+    final fitted = applyBoxFit(BoxFit.contain, source, destination);
+    return Alignment.center.inscribe(
+      fitted.destination,
+      Offset.zero & destination,
+    );
+  }
+
+  Path _closedPolygonPath(List<Offset> points) {
+    final path = Path()..moveTo(points.first.dx, points.first.dy);
+    for (final point in points.skip(1)) {
+      path.lineTo(point.dx, point.dy);
+    }
+    return path..close();
+  }
+
+  Path _smoothClosedPath(List<Offset> points) {
+    final path = Path()..moveTo(points.first.dx, points.first.dy);
+    for (var i = 0; i < points.length; i += 1) {
+      final current = points[i];
+      final next = points[(i + 1) % points.length];
+      final mid = Offset(
+        (current.dx + next.dx) / 2,
+        (current.dy + next.dy) / 2,
+      );
+      path.quadraticBezierTo(current.dx, current.dy, mid.dx, mid.dy);
+    }
+    return path..close();
+  }
+
+  @override
+  bool shouldRepaint(covariant _BodyMapPainter oldDelegate) =>
+      oldDelegate.counts != counts ||
+      oldDelegate.silhouetteMaskImage != silhouetteMaskImage;
+}
+
+class _BodyPartStatusGrid extends StatelessWidget {
+  const _BodyPartStatusGrid({required this.counts});
+
+  final Map<String, int> counts;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final childAspectRatio = constraints.maxWidth < 300
+            ? 1.55
+            : constraints.maxWidth < 360
+            ? 1.8
+            : 2.15;
+
+        return GridView.count(
+          crossAxisCount: 3,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          childAspectRatio: childAspectRatio,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+          children: [
+            for (final part in _trackedBodyParts)
+              _BodyPartStatusChip(part: part, count: counts[part] ?? 0),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _BodyPartStatusChip extends StatelessWidget {
+  const _BodyPartStatusChip({required this.part, required this.count});
+
+  final String part;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _bodyPartStatusColor(count);
+    final foreground = count == 1 ? const Color(0xFF713F12) : Colors.white;
+    final isRest = count == 0;
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+        color: color,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: isRest ? const Color(0xFFD1D5DB) : color),
       ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            label,
+            part,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.68),
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: isRest ? const Color(0xFF6B7280) : foreground,
+              fontWeight: FontWeight.w900,
+              height: 1.1,
             ),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 1),
           Text(
-            value,
+            count >= 3 ? '3회+ 주의' : '$count회',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: isRest
+                  ? const Color(0xFF9CA3AF)
+                  : foreground.withValues(alpha: 0.90),
+              fontWeight: FontWeight.w800,
+              height: 1.1,
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _BodyPartLegendDot extends StatelessWidget {
+  const _BodyPartLegendDot({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFFD1D5DB)),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: const Color(0xFF6B7280),
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1133,42 +1790,22 @@ class _WeeklyBodyPartDayCard extends StatelessWidget {
   }
 }
 
-class _MonthlyBodyPartCalendarSheet extends StatefulWidget {
+class _MonthlyBodyPartCalendarSheet extends StatelessWidget {
   const _MonthlyBodyPartCalendarSheet({required this.records});
 
   final List<WorkoutRecord> records;
 
   @override
-  State<_MonthlyBodyPartCalendarSheet> createState() =>
-      _MonthlyBodyPartCalendarSheetState();
-}
-
-class _MonthlyBodyPartCalendarSheetState
-    extends State<_MonthlyBodyPartCalendarSheet> {
-  late DateTime _visibleMonth;
-
-  @override
-  void initState() {
-    super.initState();
-    final now = DateTime.now();
-    _visibleMonth = DateTime(now.year, now.month);
-  }
-
-  void _moveMonth(int delta) {
-    setState(() {
-      _visibleMonth = DateTime(_visibleMonth.year, _visibleMonth.month + delta);
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final bodyPartsByDate = _bodyPartsByDate(widget.records);
-    final firstDay = DateTime(_visibleMonth.year, _visibleMonth.month);
+    final bodyPartsByDate = _bodyPartsByDate(records);
+    final now = DateTime.now();
+    final currentMonth = DateTime(now.year, now.month);
+    final firstDay = currentMonth;
     final firstGridDay = firstDay.subtract(
       Duration(days: firstDay.weekday - DateTime.monday),
     );
-    final today = DateTime.now();
+    final today = now;
 
     return SafeArea(
       child: FractionallySizedBox(
@@ -1179,29 +1816,11 @@ class _MonthlyBodyPartCalendarSheetState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  IconButton(
-                    key: const ValueKey('monthly-calendar-prev-month'),
-                    onPressed: () => _moveMonth(-1),
-                    icon: const Icon(Icons.chevron_left),
-                    tooltip: '이전 달',
-                  ),
-                  Expanded(
-                    child: Text(
-                      DateFormat('yyyy년 M월').format(_visibleMonth),
-                      key: const ValueKey('monthly-calendar-title'),
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ),
-                  IconButton(
-                    key: const ValueKey('monthly-calendar-next-month'),
-                    onPressed: () => _moveMonth(1),
-                    icon: const Icon(Icons.chevron_right),
-                    tooltip: '다음 달',
-                  ),
-                ],
+              Text(
+                DateFormat('yyyy년 M월').format(currentMonth),
+                key: const ValueKey('monthly-calendar-title'),
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 8),
               Row(
@@ -1241,7 +1860,9 @@ class _MonthlyBodyPartCalendarSheetState
                     final dateKey = _dateKey(date);
                     final bodyParts =
                         bodyPartsByDate[dateKey] ?? const <String>[];
-                    final isCurrentMonth = date.month == _visibleMonth.month;
+                    final isCurrentMonth =
+                        date.year == currentMonth.year &&
+                        date.month == currentMonth.month;
                     final isToday = _isSameDay(date, today);
                     return _MonthlyBodyPartCalendarDayCell(
                       date: date,
@@ -1439,15 +2060,30 @@ class _WorkoutRecordListState extends State<_WorkoutRecordList> {
   final Map<String, GlobalKey> _dateHeaderKeys = {};
 
   @override
+  void initState() {
+    super.initState();
+    _scheduleFocusedDateScroll();
+  }
+
+  @override
   void didUpdateWidget(covariant _WorkoutRecordList oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.focusRequestId != oldWidget.focusRequestId ||
+        widget.focusedDate != oldWidget.focusedDate) {
+      _scheduleFocusedDateScroll();
+    }
+  }
+
+  void _scheduleFocusedDateScroll() {
     final focusedDate = widget.focusedDate;
-    if (focusedDate == null ||
-        widget.focusRequestId == oldWidget.focusRequestId) {
+    if (focusedDate == null) {
       return;
     }
     final focusedDateKey = _dateKey(focusedDate);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
       final context = _dateHeaderKeys[focusedDateKey]?.currentContext;
       if (context == null) {
         return;
@@ -1761,7 +2397,9 @@ class _WorkoutRecordCard extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _RecordChip(label: entry.bodyPart.name),
+                  _RecordChip(
+                    label: _normalizeBodyPartName(entry.bodyPart.name),
+                  ),
                   if (warmupSetCount > 0)
                     _RecordChip(label: '워밍업 $warmupSetCount세트'),
                   if (usesDefaultBodyWeight)
@@ -1949,7 +2587,7 @@ _RecordDateSummaryItem _buildDateSummaryItem({
   for (final record in records) {
     for (final entry in record.entries) {
       entryCount += 1;
-      final bodyPartName = entry.bodyPart.name;
+      final bodyPartName = _normalizeBodyPartName(entry.bodyPart.name);
       if (!bodyPartNames.contains(bodyPartName)) {
         bodyPartNames.add(bodyPartName);
       }
@@ -1990,7 +2628,7 @@ Map<String, List<String>> _bodyPartsByDate(List<WorkoutRecord> records) {
     final key = _dateKey(workoutDate);
     final bodyParts = result.putIfAbsent(key, () => <String>[]);
     for (final entry in record.entries) {
-      final bodyPartName = entry.bodyPart.name;
+      final bodyPartName = _normalizeBodyPartName(entry.bodyPart.name);
       if (!bodyParts.contains(bodyPartName)) {
         bodyParts.add(bodyPartName);
       }
@@ -2020,7 +2658,7 @@ Map<String, List<String>> _bodyPartsByDay(
     final key = _dateKey(workoutDate);
     final bodyParts = result.putIfAbsent(key, () => <String>[]);
     for (final entry in record.entries) {
-      final bodyPartName = entry.bodyPart.name;
+      final bodyPartName = _normalizeBodyPartName(entry.bodyPart.name);
       if (!bodyParts.contains(bodyPartName)) {
         bodyParts.add(bodyPartName);
       }

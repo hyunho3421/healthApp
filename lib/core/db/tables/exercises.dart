@@ -8,6 +8,7 @@ class Exercises extends Table {
       integer().named('body_part_id').references(BodyParts, #id)();
   TextColumn get name => text().withLength(min: 1, max: 80)();
   TextColumn get type => text().withLength(min: 1, max: 30)();
+  TextColumn get armDetail => text().named('arm_detail').nullable()();
   BoolColumn get isCustom =>
       boolean().named('is_custom').withDefault(const Constant(false))();
   DateTimeColumn get createdAt =>

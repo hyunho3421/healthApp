@@ -363,6 +363,17 @@ class $ExercisesTable extends Exercises
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _armDetailMeta = const VerificationMeta(
+    'armDetail',
+  );
+  @override
+  late final GeneratedColumn<String> armDetail = GeneratedColumn<String>(
+    'arm_detail',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _isCustomMeta = const VerificationMeta(
     'isCustom',
   );
@@ -408,6 +419,7 @@ class $ExercisesTable extends Exercises
     bodyPartId,
     name,
     type,
+    armDetail,
     isCustom,
     createdAt,
     updatedAt,
@@ -453,6 +465,12 @@ class $ExercisesTable extends Exercises
       );
     } else if (isInserting) {
       context.missing(_typeMeta);
+    }
+    if (data.containsKey('arm_detail')) {
+      context.handle(
+        _armDetailMeta,
+        armDetail.isAcceptableOrUnknown(data['arm_detail']!, _armDetailMeta),
+      );
     }
     if (data.containsKey('is_custom')) {
       context.handle(
@@ -501,6 +519,10 @@ class $ExercisesTable extends Exercises
         DriftSqlType.string,
         data['${effectivePrefix}type'],
       )!,
+      armDetail: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}arm_detail'],
+      ),
       isCustom: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_custom'],
@@ -527,6 +549,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
   final int bodyPartId;
   final String name;
   final String type;
+  final String? armDetail;
   final bool isCustom;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -535,6 +558,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     required this.bodyPartId,
     required this.name,
     required this.type,
+    this.armDetail,
     required this.isCustom,
     required this.createdAt,
     required this.updatedAt,
@@ -546,6 +570,9 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     map['body_part_id'] = Variable<int>(bodyPartId);
     map['name'] = Variable<String>(name);
     map['type'] = Variable<String>(type);
+    if (!nullToAbsent || armDetail != null) {
+      map['arm_detail'] = Variable<String>(armDetail);
+    }
     map['is_custom'] = Variable<bool>(isCustom);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -558,6 +585,9 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       bodyPartId: Value(bodyPartId),
       name: Value(name),
       type: Value(type),
+      armDetail: armDetail == null && nullToAbsent
+          ? const Value.absent()
+          : Value(armDetail),
       isCustom: Value(isCustom),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -574,6 +604,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       bodyPartId: serializer.fromJson<int>(json['bodyPartId']),
       name: serializer.fromJson<String>(json['name']),
       type: serializer.fromJson<String>(json['type']),
+      armDetail: serializer.fromJson<String?>(json['armDetail']),
       isCustom: serializer.fromJson<bool>(json['isCustom']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -587,6 +618,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
       'bodyPartId': serializer.toJson<int>(bodyPartId),
       'name': serializer.toJson<String>(name),
       'type': serializer.toJson<String>(type),
+      'armDetail': serializer.toJson<String?>(armDetail),
       'isCustom': serializer.toJson<bool>(isCustom),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -598,6 +630,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     int? bodyPartId,
     String? name,
     String? type,
+    Value<String?> armDetail = const Value.absent(),
     bool? isCustom,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -606,6 +639,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
     bodyPartId: bodyPartId ?? this.bodyPartId,
     name: name ?? this.name,
     type: type ?? this.type,
+    armDetail: armDetail.present ? armDetail.value : this.armDetail,
     isCustom: isCustom ?? this.isCustom,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -618,6 +652,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           : this.bodyPartId,
       name: data.name.present ? data.name.value : this.name,
       type: data.type.present ? data.type.value : this.type,
+      armDetail: data.armDetail.present ? data.armDetail.value : this.armDetail,
       isCustom: data.isCustom.present ? data.isCustom.value : this.isCustom,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -631,6 +666,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           ..write('bodyPartId: $bodyPartId, ')
           ..write('name: $name, ')
           ..write('type: $type, ')
+          ..write('armDetail: $armDetail, ')
           ..write('isCustom: $isCustom, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -639,8 +675,16 @@ class Exercise extends DataClass implements Insertable<Exercise> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, bodyPartId, name, type, isCustom, createdAt, updatedAt);
+  int get hashCode => Object.hash(
+    id,
+    bodyPartId,
+    name,
+    type,
+    armDetail,
+    isCustom,
+    createdAt,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -649,6 +693,7 @@ class Exercise extends DataClass implements Insertable<Exercise> {
           other.bodyPartId == this.bodyPartId &&
           other.name == this.name &&
           other.type == this.type &&
+          other.armDetail == this.armDetail &&
           other.isCustom == this.isCustom &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -659,6 +704,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
   final Value<int> bodyPartId;
   final Value<String> name;
   final Value<String> type;
+  final Value<String?> armDetail;
   final Value<bool> isCustom;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -667,6 +713,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     this.bodyPartId = const Value.absent(),
     this.name = const Value.absent(),
     this.type = const Value.absent(),
+    this.armDetail = const Value.absent(),
     this.isCustom = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -676,6 +723,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     required int bodyPartId,
     required String name,
     required String type,
+    this.armDetail = const Value.absent(),
     this.isCustom = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -687,6 +735,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Expression<int>? bodyPartId,
     Expression<String>? name,
     Expression<String>? type,
+    Expression<String>? armDetail,
     Expression<bool>? isCustom,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -696,6 +745,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       if (bodyPartId != null) 'body_part_id': bodyPartId,
       if (name != null) 'name': name,
       if (type != null) 'type': type,
+      if (armDetail != null) 'arm_detail': armDetail,
       if (isCustom != null) 'is_custom': isCustom,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -707,6 +757,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     Value<int>? bodyPartId,
     Value<String>? name,
     Value<String>? type,
+    Value<String?>? armDetail,
     Value<bool>? isCustom,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -716,6 +767,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
       bodyPartId: bodyPartId ?? this.bodyPartId,
       name: name ?? this.name,
       type: type ?? this.type,
+      armDetail: armDetail ?? this.armDetail,
       isCustom: isCustom ?? this.isCustom,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -737,6 +789,9 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
     if (type.present) {
       map['type'] = Variable<String>(type.value);
     }
+    if (armDetail.present) {
+      map['arm_detail'] = Variable<String>(armDetail.value);
+    }
     if (isCustom.present) {
       map['is_custom'] = Variable<bool>(isCustom.value);
     }
@@ -756,6 +811,7 @@ class ExercisesCompanion extends UpdateCompanion<Exercise> {
           ..write('bodyPartId: $bodyPartId, ')
           ..write('name: $name, ')
           ..write('type: $type, ')
+          ..write('armDetail: $armDetail, ')
           ..write('isCustom: $isCustom, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -3019,6 +3075,7 @@ typedef $$ExercisesTableCreateCompanionBuilder =
       required int bodyPartId,
       required String name,
       required String type,
+      Value<String?> armDetail,
       Value<bool> isCustom,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -3029,6 +3086,7 @@ typedef $$ExercisesTableUpdateCompanionBuilder =
       Value<int> bodyPartId,
       Value<String> name,
       Value<String> type,
+      Value<String?> armDetail,
       Value<bool> isCustom,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -3124,6 +3182,11 @@ class $$ExercisesTableFilterComposer
 
   ColumnFilters<String> get type => $composableBuilder(
     column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get armDetail => $composableBuilder(
+    column: $table.armDetail,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3240,6 +3303,11 @@ class $$ExercisesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get armDetail => $composableBuilder(
+    column: $table.armDetail,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isCustom => $composableBuilder(
     column: $table.isCustom,
     builder: (column) => ColumnOrderings(column),
@@ -3296,6 +3364,9 @@ class $$ExercisesTableAnnotationComposer
 
   GeneratedColumn<String> get type =>
       $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get armDetail =>
+      $composableBuilder(column: $table.armDetail, builder: (column) => column);
 
   GeneratedColumn<bool> get isCustom =>
       $composableBuilder(column: $table.isCustom, builder: (column) => column);
@@ -3417,6 +3488,7 @@ class $$ExercisesTableTableManager
                 Value<int> bodyPartId = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String> type = const Value.absent(),
+                Value<String?> armDetail = const Value.absent(),
                 Value<bool> isCustom = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -3425,6 +3497,7 @@ class $$ExercisesTableTableManager
                 bodyPartId: bodyPartId,
                 name: name,
                 type: type,
+                armDetail: armDetail,
                 isCustom: isCustom,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -3435,6 +3508,7 @@ class $$ExercisesTableTableManager
                 required int bodyPartId,
                 required String name,
                 required String type,
+                Value<String?> armDetail = const Value.absent(),
                 Value<bool> isCustom = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -3443,6 +3517,7 @@ class $$ExercisesTableTableManager
                 bodyPartId: bodyPartId,
                 name: name,
                 type: type,
+                armDetail: armDetail,
                 isCustom: isCustom,
                 createdAt: createdAt,
                 updatedAt: updatedAt,

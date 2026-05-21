@@ -10,12 +10,17 @@ class ExerciseSeed {
     required this.bodyPartName,
     required this.name,
     required this.type,
+    this.armDetail,
   });
 
   final String bodyPartName;
   final String name;
   final String type;
+  final String? armDetail;
 }
+
+const armDetailBiceps = 'biceps';
+const armDetailTriceps = 'triceps';
 
 const bodyPartSeeds = <BodyPartSeed>[
   BodyPartSeed(name: '가슴', sortOrder: 0),
@@ -23,7 +28,7 @@ const bodyPartSeeds = <BodyPartSeed>[
   BodyPartSeed(name: '어깨', sortOrder: 2),
   BodyPartSeed(name: '하체', sortOrder: 3),
   BodyPartSeed(name: '팔', sortOrder: 4),
-  BodyPartSeed(name: '코어', sortOrder: 5),
+  BodyPartSeed(name: '복근', sortOrder: 5),
 ];
 
 const exerciseSeeds = <ExerciseSeed>[
@@ -45,8 +50,18 @@ const exerciseSeeds = <ExerciseSeed>[
   ExerciseSeed(bodyPartName: '하체', name: '레그프레스', type: 'weight_machine'),
   ExerciseSeed(bodyPartName: '하체', name: '레그익스텐션', type: 'weight_machine'),
   ExerciseSeed(bodyPartName: '하체', name: '스쿼트(맨몸)', type: 'bodyweight'),
-  ExerciseSeed(bodyPartName: '팔', name: '덤벨컬', type: 'weight_machine'),
-  ExerciseSeed(bodyPartName: '팔', name: '케이블푸쉬다운', type: 'weight_machine'),
-  ExerciseSeed(bodyPartName: '코어', name: '크런치', type: 'bodyweight'),
-  ExerciseSeed(bodyPartName: '코어', name: '플랭크', type: 'bodyweight'),
+  ExerciseSeed(
+    bodyPartName: '팔',
+    name: '덤벨컬',
+    type: 'weight_machine',
+    armDetail: armDetailBiceps,
+  ),
+  ExerciseSeed(
+    bodyPartName: '팔',
+    name: '케이블푸쉬다운',
+    type: 'weight_machine',
+    armDetail: armDetailTriceps,
+  ),
+  ExerciseSeed(bodyPartName: '복근', name: '크런치', type: 'bodyweight'),
+  ExerciseSeed(bodyPartName: '복근', name: '플랭크', type: 'bodyweight'),
 ];

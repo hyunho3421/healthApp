@@ -16,11 +16,13 @@ class ExerciseService {
     required int bodyPartId,
     required String name,
     required String type,
+    String? armDetail,
   }) {
     return _repository.addCustomExercise(
       bodyPartId: bodyPartId,
       name: name,
       type: type,
+      armDetail: armDetail,
     );
   }
 
@@ -36,12 +38,14 @@ class ExerciseService {
     required int bodyPartId,
     required String name,
     required String type,
+    String? armDetail,
   }) {
     return _repository.updateCustomExercise(
       id: id,
       bodyPartId: bodyPartId,
       name: name,
       type: type,
+      armDetail: armDetail,
     );
   }
 

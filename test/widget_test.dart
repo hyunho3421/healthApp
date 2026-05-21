@@ -71,6 +71,26 @@ void main() {
     expect(find.text('저장'), findsOneWidget);
   });
 
+  testWidgets('home body map card does not overflow on a small screen', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appDatabaseProvider.overrideWithValue(database)],
+        child: const MyApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('이번 주 부위별 운동'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('custom exercise registration saves selected exercise type', (
     tester,
   ) async {
@@ -364,16 +384,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('운동 기록 전체보기'), findsNothing);
-    await tester.tap(find.text('운동기록'));
+    expect(find.byTooltip('운동 기록 전체보기'), findsOneWidget);
+    await tester.tap(find.byTooltip('운동 기록 전체보기'));
     await tester.pumpAndSettle();
 
     expect(find.text('운동 기록'), findsOneWidget);
     expect(find.text('전용 페이지 확인'), findsOneWidget);
     expect(find.text('벤치프레스'), findsOneWidget);
-    expect(find.byTooltip('뒤로가기'), findsNothing);
+    expect(find.byTooltip('통계'), findsNothing);
 
-    await tester.tap(find.text('메인'));
+    await tester.tap(find.byTooltip('뒤로가기'));
     await tester.pumpAndSettle();
 
     expect(find.text('Muscle Diary'), findsOneWidget);
@@ -532,15 +552,22 @@ void main() {
     await tester.pumpAndSettle();
 
     final mondayKey = DateFormat('yyyyMMdd').format(weekStart);
+    final mondayDayFinder = find.byKey(ValueKey('weekly-day-$mondayKey'));
+    await tester.scrollUntilVisible(
+      mondayDayFinder,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(mondayDayFinder);
+    await tester.pumpAndSettle();
+    await tester.tap(mondayDayFinder);
+    await tester.pumpAndSettle(const Duration(milliseconds: 500));
+
     final mondayHeaderFinder = find.byKey(
       ValueKey('record-date-header-label-$mondayKey'),
     );
-    final beforeTapTop = tester.getTopLeft(mondayHeaderFinder).dy;
-    await tester.tap(find.byKey(ValueKey('weekly-day-$mondayKey')));
-    await tester.pumpAndSettle(const Duration(milliseconds: 500));
-
+    expect(find.text('운동 기록'), findsOneWidget);
     expect(mondayHeaderFinder, findsOneWidget);
-    expect(tester.getTopLeft(mondayHeaderFinder).dy, lessThan(beforeTapTop));
     expect(tester.getTopLeft(mondayHeaderFinder).dy, lessThan(550));
   });
 
@@ -550,12 +577,13 @@ void main() {
     final benchPress = (await database.select(database.exercises).get())
         .firstWhere((exercise) => exercise.name == '벤치프레스');
     final now = DateTime.now();
-    final recordDate = DateTime(now.year, now.month, 15);
-    final emptyDate = DateTime(now.year, now.month, 16);
+    final recordDate = DateTime(now.year, now.month);
+    final emptyDate = DateTime(now.year, now.month, 2);
     final recordDateKey = DateFormat('yyyyMMdd').format(recordDate);
     final emptyDateKey = DateFormat('yyyyMMdd').format(emptyDate);
 
-    await WorkoutService(WorkoutRepository(database)).saveWorkout(
+    final workoutService = WorkoutService(WorkoutRepository(database));
+    await workoutService.saveWorkout(
       WorkoutDraft(
         workoutDate: recordDate,
         entries: [
@@ -566,6 +594,19 @@ void main() {
         ],
       ),
     );
+    for (var day = 3; day <= 28; day += 1) {
+      await workoutService.saveWorkout(
+        WorkoutDraft(
+          workoutDate: DateTime(now.year, now.month, day),
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: benchPress.id,
+              sets: const [WorkoutSetDraft(weight: 60, reps: 10)],
+            ),
+          ],
+        ),
+      );
+    }
 
     await tester.pumpWidget(
       ProviderScope(
@@ -575,14 +616,30 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const ValueKey('monthly-body-part-calendar-button')),
+    final monthlyCalendarButtonFinder = find.byKey(
+      const ValueKey('monthly-body-part-calendar-button'),
     );
+    await tester.scrollUntilVisible(
+      monthlyCalendarButtonFinder,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.drag(find.byType(ListView).first, const Offset(0, -180));
+    await tester.pumpAndSettle();
+    await tester.tap(monthlyCalendarButtonFinder);
     await tester.pumpAndSettle();
 
     expect(
       find.byKey(const ValueKey('monthly-body-part-calendar-grid')),
       findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('monthly-calendar-prev-month')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('monthly-calendar-next-month')),
+      findsNothing,
     );
     expect(
       find.text(DateFormat('yyyy년 M월').format(recordDate)),
@@ -667,9 +724,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const ValueKey('monthly-body-part-calendar-button')),
+      final monthlyCalendarButtonFinder = find.byKey(
+        const ValueKey('monthly-body-part-calendar-button'),
       );
+      await tester.scrollUntilVisible(
+        monthlyCalendarButtonFinder,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.drag(find.byType(ListView).first, const Offset(0, -180));
+      await tester.pumpAndSettle();
+      await tester.tap(monthlyCalendarButtonFinder);
       await tester.pumpAndSettle();
 
       final dayCellFinder = find.byKey(
@@ -751,7 +816,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('운동통계'));
+    await tester.tap(find.byTooltip('통계'));
     await tester.pumpAndSettle();
 
     expect(find.text('부위 필터'), findsNothing);
@@ -788,7 +853,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('운동통계'));
+    await tester.tap(find.byTooltip('통계'));
     await tester.pumpAndSettle();
     expect(find.text('관심 운동 상세 통계'), findsNothing);
     expect(find.text('스쿼트 통계'), findsOneWidget);
@@ -828,7 +893,7 @@ void main() {
     expect(find.text('20kcal'), findsOneWidget);
     expect(find.text('70kg 기준'), findsOneWidget);
 
-    await tester.tap(find.text('설정'));
+    await tester.tap(find.byTooltip('설정/프로필'));
     await tester.pumpAndSettle();
 
     expect(find.text('설정/프로필'), findsOneWidget);
@@ -952,14 +1017,9 @@ void main() {
     expect(find.text('벤치프레스'), findsOneWidget);
     expect(find.text('삭제할 메모'), findsOneWidget);
 
-    final deleteIcon = find.byIcon(Icons.delete_outline_rounded).last;
-    final deleteButton = find.ancestor(
-      of: deleteIcon,
-      matching: find.byType(IconButton),
-    );
-    await tester.ensureVisible(deleteIcon);
+    await tester.ensureVisible(find.byTooltip('기록 삭제'));
     await tester.pumpAndSettle();
-    tester.widget<IconButton>(deleteButton).onPressed?.call();
+    await tester.tap(find.byTooltip('기록 삭제'));
     await tester.pumpAndSettle();
 
     expect(find.text('기록 삭제'), findsOneWidget);
@@ -1004,7 +1064,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('운동통계'));
+    await tester.tap(find.byTooltip('통계'));
     await tester.pumpAndSettle();
 
     expect(find.text('운동 통계'), findsOneWidget);
@@ -1091,7 +1151,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('운동통계'));
+      await tester.tap(find.byTooltip('통계'));
       await tester.pumpAndSettle();
 
       expect(find.text('부위 필터'), findsNothing);

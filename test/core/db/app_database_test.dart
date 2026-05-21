@@ -39,6 +39,14 @@ void main() {
       exercises.firstWhere((exercise) => exercise.name == '벤치프레스').type,
       defaultExerciseTypeId,
     );
+    expect(
+      exercises.firstWhere((exercise) => exercise.name == '덤벨컬').armDetail,
+      armDetailBiceps,
+    );
+    expect(
+      exercises.firstWhere((exercise) => exercise.name == '케이블푸쉬다운').armDetail,
+      armDetailTriceps,
+    );
   });
 
   test('cascades session deletion to entries and sets', () async {

@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import '../../../core/db/app_database.dart';
+import '../../../core/db/seed/workout_seed_data.dart';
 import '../../../core/models/exercise_type.dart';
 
 class ExerciseRepository {
@@ -46,6 +47,7 @@ class ExerciseRepository {
     required int bodyPartId,
     required String name,
     required String type,
+    String? armDetail,
   }) async {
     final trimmedName = name.trim();
     if (trimmedName.isEmpty) {
@@ -54,6 +56,10 @@ class ExerciseRepository {
     if (!exerciseTypeIds.contains(type)) {
       throw ArgumentError.value(type, 'type', '지원하지 않는 운동 유형입니다.');
     }
+    final effectiveArmDetail = await _validateArmDetail(
+      bodyPartId: bodyPartId,
+      armDetail: armDetail,
+    );
 
     final existing = await findExerciseByName(
       bodyPartId: bodyPartId,
@@ -70,6 +76,7 @@ class ExerciseRepository {
             bodyPartId: bodyPartId,
             name: trimmedName,
             type: type,
+            armDetail: Value(effectiveArmDetail),
             isCustom: const Value(true),
           ),
         );
@@ -88,6 +95,7 @@ class ExerciseRepository {
     required int bodyPartId,
     required String name,
     required String type,
+    String? armDetail,
   }) async {
     final trimmedName = name.trim();
     if (trimmedName.isEmpty) {
@@ -96,6 +104,10 @@ class ExerciseRepository {
     if (!exerciseTypeIds.contains(type)) {
       throw ArgumentError.value(type, 'type', '지원하지 않는 운동 유형입니다.');
     }
+    final effectiveArmDetail = await _validateArmDetail(
+      bodyPartId: bodyPartId,
+      armDetail: armDetail,
+    );
 
     final current = await findExerciseById(id);
     if (current == null || !current.isCustom) {
@@ -124,12 +136,36 @@ class ExerciseRepository {
                 bodyPartId: Value(bodyPartId),
                 name: Value(trimmedName),
                 type: Value(type),
+                armDetail: Value(effectiveArmDetail),
                 updatedAt: Value(DateTime.now()),
               ),
             );
     if (updated == 0) {
       throw StateError('사용자 등록 운동만 수정할 수 있습니다.');
     }
+  }
+
+  Future<String?> _validateArmDetail({
+    required int bodyPartId,
+    required String? armDetail,
+  }) async {
+    final bodyPart = await (_database.select(
+      _database.bodyParts,
+    )..where((table) => table.id.equals(bodyPartId))).getSingleOrNull();
+    if (bodyPart == null) {
+      throw ArgumentError.value(bodyPartId, 'bodyPartId', '존재하지 않는 부위입니다.');
+    }
+    if (bodyPart.name != '팔') {
+      return null;
+    }
+    if (armDetail != armDetailBiceps && armDetail != armDetailTriceps) {
+      throw ArgumentError.value(
+        armDetail,
+        'armDetail',
+        '팔 운동은 이두/삼두를 선택해 주세요.',
+      );
+    }
+    return armDetail;
   }
 
   Future<void> deleteCustomExercise(int id) async {

@@ -39,7 +39,7 @@ void main() {
       matchesGoldenFile('goldens/current_home.png'),
     );
 
-    await tester.tap(find.text('운동통계'));
+    await tester.tap(find.byTooltip('통계'));
     await tester.pumpAndSettle();
 
     await expectLater(
@@ -47,7 +47,7 @@ void main() {
       matchesGoldenFile('goldens/current_stats.png'),
     );
 
-    await tester.tap(find.text('메인'));
+    await tester.tap(find.byType(BackButton));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.add));
