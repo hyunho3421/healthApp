@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -783,18 +785,7 @@ class _StatsContent extends StatelessWidget {
             const SizedBox(height: 12),
             _StatsSummaryGrid(latest: latest, periodUnit: periodUnit),
             const SizedBox(height: 24),
-            Text(
-              '${periodUnit.emptyRangeLabel} 최고 중량',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 240,
-              child: _PeriodMaxWeightChart(
-                stats: stats,
-                periodUnit: periodUnit,
-              ),
-            ),
+            _WeightTrendSection(stats: stats, periodUnit: periodUnit),
           ],
         );
       },
@@ -1096,8 +1087,8 @@ class _MetricPill extends StatelessWidget {
   }
 }
 
-class _PeriodMaxWeightChart extends StatelessWidget {
-  const _PeriodMaxWeightChart({required this.stats, required this.periodUnit});
+class _WeightTrendSection extends StatelessWidget {
+  const _WeightTrendSection({required this.stats, required this.periodUnit});
 
   final List<ExercisePeriodStats> stats;
   final StatsPeriodUnit periodUnit;
@@ -1105,18 +1096,133 @@ class _PeriodMaxWeightChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final maxY = stats
-        .map((stat) => stat.maxWeight)
-        .fold<double>(0, (max, value) => value > max ? value : max);
-    final safeMaxY = maxY <= 0 ? 1.0 : maxY * 1.2;
 
-    return BarChart(
-      BarChartData(
+    return Card(
+      elevation: 0,
+      color: colorScheme.surfaceContainerHighest,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${periodUnit.emptyRangeLabel} 중량 그래프',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '최고중량과 평균중량을 함께 비교하세요',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                _ChartLegendItem(color: colorScheme.primary, label: '최고중량'),
+                _ChartLegendItem(color: colorScheme.secondary, label: '평균중량'),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 260,
+              child: _PeriodWeightLineChart(
+                stats: stats,
+                periodUnit: periodUnit,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChartLegendItem extends StatelessWidget {
+  const _ChartLegendItem({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PeriodWeightLineChart extends StatelessWidget {
+  const _PeriodWeightLineChart({required this.stats, required this.periodUnit});
+
+  final List<ExercisePeriodStats> stats;
+  final StatsPeriodUnit periodUnit;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final maxY = stats.fold<double>(0, (max, stat) {
+      final periodMax = math.max(stat.maxWeight, stat.averageWeight);
+      return periodMax > max ? periodMax : max;
+    });
+    final safeMaxY = maxY <= 0 ? 1.0 : maxY * 1.2;
+    final maxWeightSpots = <FlSpot>[
+      for (var index = 0; index < stats.length; index++)
+        FlSpot(index.toDouble(), stats[index].maxWeight),
+    ];
+    final averageWeightSpots = <FlSpot>[
+      for (var index = 0; index < stats.length; index++)
+        FlSpot(index.toDouble(), stats[index].averageWeight),
+    ];
+
+    return LineChart(
+      LineChartData(
+        minX: 0,
+        maxX: (stats.length - 1).clamp(0, stats.length).toDouble(),
+        minY: 0,
         maxY: safeMaxY,
-        gridData: const FlGridData(show: true, drawVerticalLine: false),
+        clipData: const FlClipData.all(),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          getDrawingHorizontalLine: (value) => FlLine(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+            strokeWidth: 1,
+          ),
+        ),
         borderData: FlBorderData(show: false),
-        barTouchData: BarTouchData(
-          touchTooltipData: BarTouchTooltipData(
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
             getTooltipColor: (_) => colorScheme.inverseSurface,
             tooltipBorderRadius: BorderRadius.circular(12),
             tooltipPadding: const EdgeInsets.symmetric(
@@ -1129,16 +1235,20 @@ class _PeriodMaxWeightChart extends StatelessWidget {
             ),
             fitInsideHorizontally: true,
             fitInsideVertically: true,
-            getTooltipItem: (group, groupIndex, rod, rodIndex) {
-              return BarTooltipItem(
-                '${_formatNumber(rod.toY)}kg',
-                TextStyle(
-                  color: colorScheme.onInverseSurface,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 13,
+            maxContentWidth: 170,
+            getTooltipItems: (spots) => [
+              for (final spot in spots)
+                LineTooltipItem(
+                  '${spot.barIndex == 0 ? '최고' : '평균'} ${_formatNumber(spot.y)}kg',
+                  TextStyle(
+                    color: spot.barIndex == 0
+                        ? colorScheme.primaryContainer
+                        : colorScheme.secondaryContainer,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
                 ),
-              );
-            },
+            ],
           ),
         ),
         titlesData: FlTitlesData(
@@ -1162,9 +1272,12 @@ class _PeriodMaxWeightChart extends StatelessWidget {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 32,
+              interval: 1,
               getTitlesWidget: (value, meta) {
-                final index = value.toInt();
-                if (index < 0 || index >= stats.length) {
+                final index = value.round();
+                if ((value - index).abs() > 0.01 ||
+                    index < 0 ||
+                    index >= stats.length) {
                   return const SizedBox.shrink();
                 }
                 return Padding(
@@ -1178,20 +1291,35 @@ class _PeriodMaxWeightChart extends StatelessWidget {
             ),
           ),
         ),
-        barGroups: [
-          for (var index = 0; index < stats.length; index++)
-            BarChartGroupData(
-              x: index,
-              barRods: [
-                BarChartRodData(
-                  toY: stats[index].maxWeight,
-                  width: 18,
-                  borderRadius: BorderRadius.circular(4),
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ],
-            ),
+        lineBarsData: [
+          _weightLine(
+            spots: maxWeightSpots,
+            color: colorScheme.primary,
+            showArea: true,
+          ),
+          _weightLine(spots: averageWeightSpots, color: colorScheme.secondary),
         ],
+      ),
+    );
+  }
+
+  LineChartBarData _weightLine({
+    required List<FlSpot> spots,
+    required Color color,
+    bool showArea = false,
+  }) {
+    return LineChartBarData(
+      spots: spots,
+      isCurved: true,
+      preventCurveOverShooting: true,
+      barWidth: 3,
+      color: color,
+      isStrokeCapRound: true,
+      isStrokeJoinRound: true,
+      dotData: FlDotData(show: stats.length <= 12),
+      belowBarData: BarAreaData(
+        show: showArea,
+        color: color.withValues(alpha: 0.10),
       ),
     );
   }

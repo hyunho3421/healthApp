@@ -511,6 +511,13 @@ Map<String, int> _weeklyBodyPartCounts(
 }) {
   final weekEnd = weekStart.add(const Duration(days: 7));
   final counts = {for (final part in _trackedBodyParts) part: 0};
+  final bodyPartDates = <String, Set<String>>{
+    for (final part in _trackedBodyParts) part: <String>{},
+  };
+  final armDetailDates = <String, Set<String>>{
+    _bodyPartCountArmBicepsKey: <String>{},
+    _bodyPartCountArmTricepsKey: <String>{},
+  };
 
   for (final record in records) {
     final workoutDate = DateTime(
@@ -521,33 +528,32 @@ Map<String, int> _weeklyBodyPartCounts(
     if (workoutDate.isBefore(weekStart) || !workoutDate.isBefore(weekEnd)) {
       continue;
     }
+    final dateKey = _dateKey(workoutDate);
 
-    final partsInSession = <String>{};
-    final armDetailsInSession = <String>{};
     for (final entry in record.entries) {
       final bodyPartName = _normalizeBodyPartName(entry.bodyPart.name);
       if (_trackedBodyParts.contains(bodyPartName)) {
-        partsInSession.add(bodyPartName);
+        bodyPartDates[bodyPartName]?.add(dateKey);
       }
       if (bodyPartName == '팔') {
         switch (entry.exercise.armDetail) {
           case armDetailBiceps:
-            armDetailsInSession.add(_bodyPartCountArmBicepsKey);
+            armDetailDates[_bodyPartCountArmBicepsKey]?.add(dateKey);
           case armDetailTriceps:
-            armDetailsInSession.add(_bodyPartCountArmTricepsKey);
+            armDetailDates[_bodyPartCountArmTricepsKey]?.add(dateKey);
           default:
-            armDetailsInSession
-              ..add(_bodyPartCountArmBicepsKey)
-              ..add(_bodyPartCountArmTricepsKey);
+            armDetailDates[_bodyPartCountArmBicepsKey]?.add(dateKey);
+            armDetailDates[_bodyPartCountArmTricepsKey]?.add(dateKey);
         }
       }
     }
-    for (final part in partsInSession) {
-      counts[part] = (counts[part] ?? 0) + 1;
-    }
-    for (final armDetail in armDetailsInSession) {
-      counts[armDetail] = (counts[armDetail] ?? 0) + 1;
-    }
+  }
+
+  for (final entry in bodyPartDates.entries) {
+    counts[entry.key] = entry.value.length;
+  }
+  for (final entry in armDetailDates.entries) {
+    counts[entry.key] = entry.value.length;
   }
 
   return counts;
@@ -795,7 +801,9 @@ enum _BodyRegion {
   biceps,
   triceps,
   abs,
-  thighs,
+  frontThighs,
+  glutes,
+  hamstrings,
   calves,
 }
 
@@ -808,9 +816,13 @@ const Map<String, List<_BodyRegion>> _bodyPartRegionMap = {
   _bodyPartCountArmTricepsKey: [_BodyRegion.triceps],
   '복근': [_BodyRegion.abs],
   // Keep the current six-part aggregation while separating the paint layer into
-  // extensible leg regions. Exercise-level mapping can later target only thighs
-  // or calves without changing the painter structure.
-  '하체': [_BodyRegion.thighs, _BodyRegion.calves],
+  // extensible leg regions: front quadriceps, rear hamstrings, and rear calves.
+  '하체': [
+    _BodyRegion.frontThighs,
+    _BodyRegion.glutes,
+    _BodyRegion.hamstrings,
+    _BodyRegion.calves,
+  ],
 };
 
 class _BodyMapPainter extends CustomPainter {
@@ -914,9 +926,9 @@ class _BodyMapPainter extends CustomPainter {
     drawRegion(_BodyRegion.chest, _frontPectoralPaths(ip), clip: frontClip);
     drawRegion(_BodyRegion.abs, [_frontAbsPath(ip)], clip: frontClip);
     drawAbsDetails(clip: frontClip);
-    drawRegion(_BodyRegion.thighs, _frontThighPaths(ip), clip: frontClip);
-    drawRegion(_BodyRegion.thighs, _backThighPaths(ip), clip: backClip);
-    drawRegion(_BodyRegion.calves, _frontCalfPaths(ip), clip: frontClip);
+    drawRegion(_BodyRegion.frontThighs, _frontThighPaths(ip), clip: frontClip);
+    drawRegion(_BodyRegion.glutes, _backGlutePaths(ip), clip: backClip);
+    drawRegion(_BodyRegion.hamstrings, _backHamstringPaths(ip), clip: backClip);
     drawRegion(_BodyRegion.calves, _backCalfPaths(ip), clip: backClip);
     canvas.drawImageRect(
       silhouetteMaskImage,
@@ -1098,6 +1110,8 @@ class _BodyMapPainter extends CustomPainter {
     // The mask is intentionally full around the anterior deltoid cap so the
     // shoulder fill reaches the clavicle side, outer shoulder edge, and natural
     // lower insertion before the PNG alpha clip trims it to the silhouette.
+    // Latest adjustment: screen-right anterior deltoid body-side edge was
+    // expanded back by about 5% while preserving the outer shoulder boundary.
     _closedPolygonPath([
       ip(350, 176),
       ip(338, 184),
@@ -1115,58 +1129,62 @@ class _BodyMapPainter extends CustomPainter {
       ip(352, 194),
     ]),
     _closedPolygonPath([
-      ip(522, 176),
-      ip(528, 184),
+      ip(527, 176),
+      ip(533, 184),
       ip(560, 204),
       ip(588, 236),
       ip(612, 282),
       ip(618, 315),
       ip(602, 308),
       ip(570, 308),
-      ip(542, 301),
-      ip(530, 290),
-      ip(522, 282),
-      ip(516, 258),
-      ip(514, 224),
-      ip(514, 194),
+      ip(547, 301),
+      ip(535, 290),
+      ip(527, 282),
+      ip(521, 258),
+      ip(519, 224),
+      ip(519, 194),
     ]),
   ];
 
   List<Path> _backDeltoidPaths(Offset Function(double x, double y) ip) => [
     // Same shoulder masks as the front figure, translated to the back figure
     // center so front/back shoulder highlights stay visually consistent.
-    // Lower rear-deltoid coverage is trimmed upward by ~20%.
+    // Lower rear-deltoid coverage is trimmed upward by ~20%. Latest adjustment:
+    // both rear deltoids are expanded about 15% toward the body center, with
+    // the body-side lower corners softened so they do not end in sharp points.
     _closedPolygonPath([
-      ip(1006, 176),
-      ip(996, 184),
+      ip(1020, 176),
+      ip(1010, 184),
       ip(972, 204),
       ip(944, 236),
       ip(920, 286),
       ip(914, 304),
       ip(930, 312),
       ip(962, 314),
-      ip(994, 304),
-      ip(996, 291),
-      ip(1004, 282),
-      ip(1008, 260),
-      ip(1008, 224),
-      ip(1008, 194),
+      ip(994, 310),
+      ip(1005, 303),
+      ip(1012, 293),
+      ip(1018, 282),
+      ip(1022, 260),
+      ip(1022, 224),
+      ip(1022, 194),
     ]),
     _closedPolygonPath([
-      ip(1198, 176),
-      ip(1202, 184),
+      ip(1184, 176),
+      ip(1188, 184),
       ip(1226, 204),
       ip(1254, 236),
       ip(1278, 286),
       ip(1284, 304),
       ip(1268, 304),
       ip(1236, 304),
-      ip(1204, 296),
-      ip(1208, 288),
-      ip(1200, 282),
-      ip(1196, 260),
-      ip(1196, 224),
-      ip(1196, 194),
+      ip(1204, 302),
+      ip(1193, 296),
+      ip(1189, 288),
+      ip(1186, 282),
+      ip(1182, 260),
+      ip(1182, 224),
+      ip(1182, 194),
     ]),
   ];
 
@@ -1250,14 +1268,14 @@ class _BodyMapPainter extends CustomPainter {
 
   List<Path> _backTricepsPaths(Offset Function(double x, double y) ip) => [
     // User-provided red triceps reference remapped from the marked 1080px
-    // body image onto the app's rear silhouette bbox, then nudged screen-right
-    // so the highlight sits closer to the visual center of each upper arm.
+    // body image onto the app's rear silhouette bbox. The upper tips are
+    // curved inward toward the torso for a more natural rear-triceps insertion.
     _smoothClosedPath([
-      ip(983, 286),
-      ip(995, 288),
-      ip(1005, 299),
-      ip(1012, 317),
-      ip(1015, 334),
+      ip(991, 299),
+      ip(1001, 302),
+      ip(1008, 311),
+      ip(1012, 324),
+      ip(1015, 338),
       ip(1013, 355),
       ip(1009, 376),
       ip(1002, 397),
@@ -1268,16 +1286,16 @@ class _BodyMapPainter extends CustomPainter {
       ip(971, 390),
       ip(974, 372),
       ip(976, 352),
-      ip(978, 331),
-      ip(978, 311),
-      ip(979, 293),
+      ip(978, 333),
+      ip(982, 315),
+      ip(986, 300),
     ]),
     _smoothClosedPath([
-      ip(1220, 286),
-      ip(1208, 288),
-      ip(1198, 299),
-      ip(1191, 317),
-      ip(1188, 334),
+      ip(1212, 299),
+      ip(1202, 302),
+      ip(1195, 311),
+      ip(1191, 324),
+      ip(1188, 338),
       ip(1190, 355),
       ip(1194, 376),
       ip(1200, 397),
@@ -1288,85 +1306,161 @@ class _BodyMapPainter extends CustomPainter {
       ip(1232, 390),
       ip(1228, 372),
       ip(1227, 352),
-      ip(1225, 331),
-      ip(1224, 311),
-      ip(1224, 293),
+      ip(1225, 333),
+      ip(1220, 315),
+      ip(1216, 300),
     ]),
   ];
 
   List<Path> _frontThighPaths(Offset Function(double x, double y) ip) => [
+    // User-provided red front-leg reference updated 2026-05-22: anterior
+    // thigh / quadriceps only. Red mask bbox from the 1080x1456 marked image
+    // was left=(454,745)-(574,1056), right=(612,745)-(726,1056), mapped from
+    // the source body bbox (365,38)-(829,1425) onto the app front silhouette.
+    // Latest adjustment: screen-left quadriceps moved about 3% outward;
+    // screen-right quadriceps rotated about 3 degrees counter-clockwise around
+    // its local center, using the user's front-view screen direction.
     _smoothClosedPath([
-      ip(354, 626),
-      ip(424, 616),
-      ip(422, 742),
-      ip(406, 790),
-      ip(358, 790),
-      ip(336, 704),
+      ip(353, 522),
+      ip(350, 539),
+      ip(348, 555),
+      ip(347, 572),
+      ip(346, 588),
+      ip(347, 605),
+      ip(349, 621),
+      ip(351, 638),
+      ip(354, 654),
+      ip(358, 671),
+      ip(363, 687),
+      ip(367, 704),
+      ip(370, 720),
+      ip(386, 728),
+      ip(398, 728),
+      ip(413, 720),
+      ip(420, 704),
+      ip(423, 687),
+      ip(423, 671),
+      ip(424, 654),
+      ip(424, 638),
+      ip(426, 621),
+      ip(426, 605),
+      ip(424, 588),
+      ip(415, 572),
+      ip(394, 555),
+      ip(373, 539),
+      ip(356, 522),
     ]),
     _smoothClosedPath([
-      ip(442, 616),
-      ip(512, 626),
-      ip(530, 704),
-      ip(508, 790),
-      ip(460, 790),
-      ip(444, 742),
+      ip(506, 521),
+      ip(490, 539),
+      ip(471, 556),
+      ip(454, 574),
+      ip(446, 590),
+      ip(444, 607),
+      ip(445, 623),
+      ip(446, 640),
+      ip(446, 656),
+      ip(447, 673),
+      ip(448, 689),
+      ip(451, 706),
+      ip(460, 721),
+      ip(476, 729),
+      ip(487, 728),
+      ip(503, 719),
+      ip(505, 703),
+      ip(508, 686),
+      ip(512, 670),
+      ip(514, 653),
+      ip(517, 636),
+      ip(519, 619),
+      ip(520, 603),
+      ip(519, 586),
+      ip(518, 570),
+      ip(517, 553),
+      ip(514, 537),
+      ip(509, 521),
     ]),
   ];
 
-  List<Path> _backThighPaths(Offset Function(double x, double y) ip) => [
+  List<Path> _backGlutePaths(Offset Function(double x, double y) ip) => [
+    // Extracted from the user-provided rear glute red mask. Source PNG red
+    // components: left bbox (468,668)-(593,848), right bbox (603,668)-(727,848)
+    // in the 1080x1456 marked image; mapped from source body bbox
+    // (365,38)-(829,1425) onto the app back silhouette bbox (944,56)-(1254,971).
+    // Latest adjustment: moved the glute region down by about 15% of its
+    // current height.
     _smoothClosedPath([
-      ip(1020, 626),
-      ip(1088, 616),
-      ip(1086, 742),
-      ip(1070, 790),
-      ip(1022, 790),
-      ip(1000, 704),
+      ip(1013, 491),
+      ip(1031, 485),
+      ip(1062, 485),
+      ip(1086, 496),
+      ip(1098, 520),
+      ip(1096, 555),
+      ip(1084, 590),
+      ip(1063, 609),
+      ip(1032, 605),
+      ip(1014, 579),
+      ip(1007, 542),
+      ip(1008, 512),
     ]),
     _smoothClosedPath([
-      ip(1110, 616),
-      ip(1178, 626),
-      ip(1196, 704),
-      ip(1174, 790),
-      ip(1126, 790),
-      ip(1110, 742),
+      ip(1101, 520),
+      ip(1113, 496),
+      ip(1137, 485),
+      ip(1168, 485),
+      ip(1186, 491),
+      ip(1191, 512),
+      ip(1192, 542),
+      ip(1185, 579),
+      ip(1167, 605),
+      ip(1136, 609),
+      ip(1115, 590),
+      ip(1103, 555),
     ]),
   ];
 
-  List<Path> _frontCalfPaths(Offset Function(double x, double y) ip) => [
+  List<Path> _backHamstringPaths(Offset Function(double x, double y) ip) => [
+    // Hamstring vertical range reduced by 15% from the top and 15% from the
+    // bottom, preserving each side's horizontal outline. Latest adjustment:
+    // moved the reduced hamstring region up by about 10% of its current height.
     _smoothClosedPath([
-      ip(358, 790),
-      ip(406, 790),
-      ip(410, 892),
-      ip(394, 920),
-      ip(356, 916),
-      ip(340, 846),
+      ip(1020, 637),
+      ip(1088, 630),
+      ip(1086, 718),
+      ip(1070, 752),
+      ip(1022, 752),
+      ip(1000, 692),
     ]),
     _smoothClosedPath([
-      ip(460, 790),
-      ip(508, 790),
-      ip(526, 846),
-      ip(510, 916),
-      ip(472, 920),
-      ip(456, 892),
+      ip(1110, 630),
+      ip(1178, 637),
+      ip(1196, 692),
+      ip(1174, 752),
+      ip(1126, 752),
+      ip(1110, 718),
     ]),
   ];
 
   List<Path> _backCalfPaths(Offset Function(double x, double y) ip) => [
+    // Calf lower edge reduced by 15%, keeping the top anchor aligned with the
+    // hamstring/knee boundary and preserving each side's horizontal outline.
+    // Latest adjustment: screen-right calf rotated 10 degrees clockwise around
+    // its local center using the user's screen direction.
     _smoothClosedPath([
       ip(1022, 790),
       ip(1070, 790),
-      ip(1074, 892),
-      ip(1058, 920),
-      ip(1020, 916),
-      ip(1004, 846),
+      ip(1074, 877),
+      ip(1058, 900),
+      ip(1020, 897),
+      ip(1004, 838),
     ]),
     _smoothClosedPath([
-      ip(1128, 790),
-      ip(1174, 790),
-      ip(1192, 846),
-      ip(1176, 916),
-      ip(1138, 920),
-      ip(1124, 892),
+      ip(1121, 790),
+      ip(1168, 791),
+      ip(1186, 838),
+      ip(1169, 897),
+      ip(1131, 900),
+      ip(1117, 877),
     ]),
   ];
 
