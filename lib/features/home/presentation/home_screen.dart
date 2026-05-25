@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/db/app_database.dart';
 import '../../../core/db/seed/workout_seed_data.dart';
+import '../../../core/formatters/metric_number_formatter.dart';
 import '../../../core/models/exercise_type.dart';
 import '../../../core/widgets/centered_toast.dart';
 import '../../profile/providers/user_profile_providers.dart';
@@ -2351,7 +2352,7 @@ class _WorkoutDateSummaryCard extends StatelessWidget {
                 Expanded(
                   child: _MetricTile(
                     label: '총 볼륨',
-                    value: '${_formatVolume(item.totalVolume)}kg',
+                    value: '${formatMetricNumber(item.totalVolume)}kg',
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -2473,7 +2474,7 @@ class _WorkoutRecordCard extends StatelessWidget {
                   Expanded(
                     child: _MetricTile(
                       label: '볼륨',
-                      value: '${_formatVolume(totalVolume)}kg',
+                      value: '${formatMetricNumber(totalVolume)}kg',
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -2782,13 +2783,6 @@ String _weekdayLabel(int weekday) {
     DateTime.sunday => '일',
     _ => '',
   };
-}
-
-String _formatVolume(double value) {
-  if (value == value.roundToDouble()) {
-    return value.toStringAsFixed(0);
-  }
-  return value.toStringAsFixed(1);
 }
 
 double _estimateWorkoutCalories({

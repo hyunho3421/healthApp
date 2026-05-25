@@ -1,15 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/formatters/metric_number_formatter.dart';
 import '../../../core/widgets/centered_toast.dart';
 import '../providers/user_profile_providers.dart';
-
-String _formatVolume(double value) {
-  if (value == value.roundToDouble()) {
-    return value.toStringAsFixed(0);
-  }
-  return value.toStringAsFixed(1);
-}
 
 class ProfileSettingsScreen extends ConsumerStatefulWidget {
   const ProfileSettingsScreen({super.key});
@@ -40,7 +34,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
     }
     _bodyWeightController.text = bodyWeightKg == null
         ? ''
-        : _formatVolume(bodyWeightKg);
+        : formatMetricNumber(bodyWeightKg);
     setState(() => _isLoading = false);
   }
 

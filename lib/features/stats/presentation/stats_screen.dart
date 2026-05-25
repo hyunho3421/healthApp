@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/db/app_database.dart';
+import '../../../core/formatters/metric_number_formatter.dart';
 import '../../exercise/providers/exercise_providers.dart';
 import '../models/exercise_stats_period.dart';
 import '../models/favorite_exercise_stats.dart';
@@ -443,13 +444,13 @@ class _FavoriteExerciseCard extends StatelessWidget {
                   const Text('기록 없음')
                 else ...[
                   Text(
-                    '최고 ${_formatNumber(stats.maxWeight)}kg × ${stats.maxWeightReps}회',
+                    '최고 ${formatMetricNumber(stats.maxWeight)}kg × ${stats.maxWeightReps}회',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.labelLarge,
                   ),
                   const SizedBox(height: 4),
-                  Text('총 볼륨 ${_formatNumber(stats.totalVolume)}kg'),
+                  Text('총 볼륨 ${formatMetricNumber(stats.totalVolume)}kg'),
                   Text('운동일 ${stats.workoutDayCount}일'),
                   Text(
                     '최근 ${DateFormat('M/d').format(stats.lastWorkoutDate!)}',
@@ -816,13 +817,13 @@ class _StatsSummaryGrid extends StatelessWidget {
           _SecondaryMetricCard(
             icon: Icons.monitor_weight_outlined,
             label: '${periodUnit.metricPrefix} 평균 중량',
-            value: '${_formatNumber(latest.averageWeight)}kg',
+            value: '${formatMetricNumber(latest.averageWeight)}kg',
             accentColor: Theme.of(context).colorScheme.secondary,
           ),
           _SecondaryMetricCard(
             icon: Icons.inventory_2_outlined,
             label: '${periodUnit.metricPrefix} 총 볼륨',
-            value: '${_formatNumber(latest.totalVolume)}kg',
+            value: '${formatMetricNumber(latest.totalVolume)}kg',
             accentColor: Theme.of(context).colorScheme.tertiary,
           ),
           _SecondaryMetricCard(
@@ -951,7 +952,7 @@ class _HeroMetricCard extends StatelessWidget {
               child: Text.rich(
                 TextSpan(
                   children: [
-                    TextSpan(text: _formatNumber(latest.maxWeight)),
+                    TextSpan(text: formatMetricNumber(latest.maxWeight)),
                     TextSpan(
                       text: 'kg',
                       style: textTheme.titleLarge?.copyWith(
@@ -1268,7 +1269,7 @@ class _PeriodWeightLineChart extends StatelessWidget {
             getTooltipItems: (spots) => [
               for (final spot in spots)
                 LineTooltipItem(
-                  '${spot.barIndex == 0 ? '최고' : '평균'} ${_formatNumber(spot.y)}kg',
+                  '${spot.barIndex == 0 ? '최고' : '평균'} ${formatMetricNumber(spot.y)}kg',
                   TextStyle(
                     color: spot.barIndex == 0
                         ? _maxWeightTooltipColor
@@ -1292,7 +1293,7 @@ class _PeriodWeightLineChart extends StatelessWidget {
               showTitles: true,
               reservedSize: 44,
               getTitlesWidget: (value, meta) => Text(
-                _formatNumber(value),
+                formatMetricNumber(value),
                 style: Theme.of(context).textTheme.labelSmall,
               ),
             ),
@@ -1431,19 +1432,12 @@ String? _formatTrendCaption(double? value) {
   return '${_formatRate(value)} $direction';
 }
 
-String _formatNumber(double value) {
-  if (value == value.roundToDouble()) {
-    return value.toStringAsFixed(0);
-  }
-  return value.toStringAsFixed(1);
-}
-
 String _formatDiff(double? value) {
   if (value == null) {
     return '비교 없음';
   }
   final sign = value > 0 ? '+' : '';
-  return '$sign${_formatNumber(value)}kg';
+  return '$sign${formatMetricNumber(value)}kg';
 }
 
 String? _formatRate(double? value) {
@@ -1451,5 +1445,5 @@ String? _formatRate(double? value) {
     return null;
   }
   final sign = value > 0 ? '+' : '';
-  return '$sign${_formatNumber(value)}%';
+  return '$sign${formatMetricNumber(value)}%';
 }
