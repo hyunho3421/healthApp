@@ -21,6 +21,13 @@ const _maxWeightTooltipColor = Color(0xFFFCA5A5);
 // smooths joins while keeping the line close to the measured period values.
 const _weightTrendCurveSmoothness = 0.16;
 
+// Monthly charts have a wider x-axis and fewer data points than the weekly
+// view, so the same curved interpolation can make month-to-month changes look
+// overly shaped. Use a lighter curve only for consecutive monthly points, and
+// fall back to straight segments when months are sparse.
+const _monthlyWeightTrendCurveSmoothness = 0.06;
+const _monthlyCurvedWeightTrendMinimumSpotCount = 4;
+
 class StatsScreen extends ConsumerStatefulWidget {
   const StatsScreen({super.key});
 
@@ -1344,10 +1351,18 @@ class _PeriodWeightLineChart extends StatelessWidget {
     required Color color,
     bool showArea = false,
   }) {
+    final useMonthlyRendering = periodUnit == StatsPeriodUnit.monthly;
+    final useCurvedLine = useMonthlyRendering
+        ? _shouldCurveMonthlyWeightLine(spots)
+        : spots.length > 2;
+    final curveSmoothness = useMonthlyRendering
+        ? _monthlyWeightTrendCurveSmoothness
+        : _weightTrendCurveSmoothness;
+
     return LineChartBarData(
       spots: spots,
-      isCurved: spots.length > 2,
-      curveSmoothness: _weightTrendCurveSmoothness,
+      isCurved: useCurvedLine,
+      curveSmoothness: curveSmoothness,
       preventCurveOverShooting: true,
       barWidth: 3,
       color: color,
@@ -1359,6 +1374,22 @@ class _PeriodWeightLineChart extends StatelessWidget {
         color: color.withValues(alpha: 0.10),
       ),
     );
+  }
+
+  bool _shouldCurveMonthlyWeightLine(List<FlSpot> spots) {
+    if (spots.length < _monthlyCurvedWeightTrendMinimumSpotCount) {
+      return false;
+    }
+
+    for (var index = 1; index < spots.length; index++) {
+      final previousX = spots[index - 1].x;
+      final currentX = spots[index].x;
+      if ((currentX - previousX).abs() > 1) {
+        return false;
+      }
+    }
+
+    return true;
   }
 }
 
