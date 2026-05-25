@@ -10,7 +10,11 @@ import '../../exercise/providers/exercise_providers.dart';
 import '../models/exercise_stats_period.dart';
 import '../models/favorite_exercise_stats.dart';
 import '../models/monthly_exercise_stats.dart';
+import '../models/stats_chart_axis.dart';
 import '../providers/stats_providers.dart';
+
+const _maxWeightGraphColor = Color(0xFFEF4444);
+const _maxWeightTooltipColor = Color(0xFFFCA5A5);
 
 class StatsScreen extends ConsumerStatefulWidget {
   const StatsScreen({super.key});
@@ -77,6 +81,11 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
               .getExerciseStats(
                 exerciseId: selected.exercise.id,
                 periodUnit: _selectedPeriodUnit,
+                recentCount: switch (_selectedPeriodUnit) {
+                  StatsPeriodUnit.daily => dailyRecentSevenPeriodCount,
+                  StatsPeriodUnit.weekly => weeklyRecentFivePeriodCount,
+                  StatsPeriodUnit.monthly => monthlyMaximumPeriodCount,
+                },
               );
   }
 
@@ -1134,7 +1143,7 @@ class _WeightTrendSection extends StatelessWidget {
               spacing: 12,
               runSpacing: 8,
               children: [
-                _ChartLegendItem(color: colorScheme.primary, label: '최고중량'),
+                _ChartLegendItem(color: _maxWeightGraphColor, label: '최고중량'),
                 _ChartLegendItem(color: colorScheme.secondary, label: '평균중량'),
               ],
             ),
@@ -1196,19 +1205,39 @@ class _PeriodWeightLineChart extends StatelessWidget {
       return periodMax > max ? periodMax : max;
     });
     final safeMaxY = maxY <= 0 ? 1.0 : maxY * 1.2;
+    final chartWindow = buildWeightTrendAxisWindow(
+      periodUnit: periodUnit,
+      stats: stats,
+      today: DateTime.now(),
+    );
+    final chartOrigin = chartWindow.origin;
     final maxWeightSpots = <FlSpot>[
       for (var index = 0; index < stats.length; index++)
-        FlSpot(index.toDouble(), stats[index].maxWeight),
+        if (_isStatInChartDomain(
+          periodOffsetFrom(chartOrigin, stats[index].periodStart, periodUnit),
+          chartWindow,
+        ))
+          FlSpot(
+            periodOffsetFrom(chartOrigin, stats[index].periodStart, periodUnit),
+            stats[index].maxWeight,
+          ),
     ];
     final averageWeightSpots = <FlSpot>[
       for (var index = 0; index < stats.length; index++)
-        FlSpot(index.toDouble(), stats[index].averageWeight),
+        if (_isStatInChartDomain(
+          periodOffsetFrom(chartOrigin, stats[index].periodStart, periodUnit),
+          chartWindow,
+        ))
+          FlSpot(
+            periodOffsetFrom(chartOrigin, stats[index].periodStart, periodUnit),
+            stats[index].averageWeight,
+          ),
     ];
 
     return LineChart(
       LineChartData(
-        minX: 0,
-        maxX: (stats.length - 1).clamp(0, stats.length).toDouble(),
+        minX: chartWindow.paddedMinX,
+        maxX: chartWindow.paddedMaxX,
         minY: 0,
         maxY: safeMaxY,
         clipData: const FlClipData.all(),
@@ -1242,7 +1271,7 @@ class _PeriodWeightLineChart extends StatelessWidget {
                   '${spot.barIndex == 0 ? '최고' : '평균'} ${_formatNumber(spot.y)}kg',
                   TextStyle(
                     color: spot.barIndex == 0
-                        ? colorScheme.primaryContainer
+                        ? _maxWeightTooltipColor
                         : colorScheme.secondaryContainer,
                     fontWeight: FontWeight.w800,
                     fontSize: 13,
@@ -1274,16 +1303,14 @@ class _PeriodWeightLineChart extends StatelessWidget {
               reservedSize: 32,
               interval: 1,
               getTitlesWidget: (value, meta) {
-                final index = value.round();
-                if ((value - index).abs() > 0.01 ||
-                    index < 0 ||
-                    index >= stats.length) {
+                final tickDate = axisTickDateAt(chartWindow, value);
+                if (tickDate == null) {
                   return const SizedBox.shrink();
                 }
                 return Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    _formatChartLabel(stats[index], periodUnit),
+                    _formatChartDateLabel(tickDate, periodUnit),
                     style: Theme.of(context).textTheme.labelSmall,
                   ),
                 );
@@ -1294,13 +1321,17 @@ class _PeriodWeightLineChart extends StatelessWidget {
         lineBarsData: [
           _weightLine(
             spots: maxWeightSpots,
-            color: colorScheme.primary,
+            color: _maxWeightGraphColor,
             showArea: true,
           ),
           _weightLine(spots: averageWeightSpots, color: colorScheme.secondary),
         ],
       ),
     );
+  }
+
+  bool _isStatInChartDomain(double offset, WeightTrendAxisWindow chartWindow) {
+    return chartWindow.containsOffset(offset);
   }
 
   LineChartBarData _weightLine({
@@ -1348,12 +1379,11 @@ String _formatPeriodTitle(ExercisePeriodStats stat) {
   };
 }
 
-String _formatChartLabel(ExercisePeriodStats stat, StatsPeriodUnit periodUnit) {
+String _formatChartDateLabel(DateTime periodStart, StatsPeriodUnit periodUnit) {
   return switch (periodUnit) {
-    StatsPeriodUnit.daily => DateFormat('M/d').format(stat.periodStart),
-    StatsPeriodUnit.weekly =>
-      '${stat.periodStart.month}/${stat.periodStart.day}',
-    StatsPeriodUnit.monthly => DateFormat('M월').format(stat.periodStart),
+    StatsPeriodUnit.daily => DateFormat('M/d').format(periodStart),
+    StatsPeriodUnit.weekly => '${periodStart.month}/${periodStart.day}',
+    StatsPeriodUnit.monthly => DateFormat('M월').format(periodStart),
   };
 }
 

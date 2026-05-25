@@ -113,8 +113,8 @@ class StatsService {
   Future<List<ExercisePeriodStats>> _loadStats({
     required StatsPeriodUnit periodUnit,
     required Future<List<ExercisePeriodStatsRow>> Function(
-      DateTime fromInclusive,
-      DateTime toExclusive,
+      DateTime? fromInclusive,
+      DateTime? toExclusive,
     )
     loader,
     int? recentCount,
@@ -125,12 +125,29 @@ class StatsService {
       throw ArgumentError.value(count, 'recentCount', '조회 기간 수는 1 이상이어야 합니다.');
     }
 
+    if (periodUnit == StatsPeriodUnit.monthly && anchorDate == null) {
+      final rows = await loader(null, null);
+      return _withPreviousComparisons(_latestMonthlyRows(rows, count));
+    }
+
     final anchor = _periodStart(anchorDate ?? DateTime.now(), periodUnit);
     final from = _addPeriods(anchor, periodUnit, -(count - 1));
     final toExclusive = _addPeriods(anchor, periodUnit, 1);
     final rows = await loader(from, toExclusive);
 
     return _withPreviousComparisons(rows);
+  }
+
+  List<ExercisePeriodStatsRow> _latestMonthlyRows(
+    List<ExercisePeriodStatsRow> rows,
+    int count,
+  ) {
+    final sortedRows = rows.toList()
+      ..sort((a, b) => a.periodStart.compareTo(b.periodStart));
+    if (sortedRows.length <= count) {
+      return sortedRows;
+    }
+    return sortedRows.sublist(sortedRows.length - count);
   }
 
   List<ExercisePeriodStats> _withPreviousComparisons(
