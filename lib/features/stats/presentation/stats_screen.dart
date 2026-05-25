@@ -17,6 +17,10 @@ import '../providers/stats_providers.dart';
 const _maxWeightGraphColor = Color(0xFFEF4444);
 const _maxWeightTooltipColor = Color(0xFFFCA5A5);
 
+// Keep weight trend interpolation subtle: a lower-than-default fl_chart curve
+// smooths joins while keeping the line close to the measured period values.
+const _weightTrendCurveSmoothness = 0.16;
+
 class StatsScreen extends ConsumerStatefulWidget {
   const StatsScreen({super.key});
 
@@ -1342,7 +1346,8 @@ class _PeriodWeightLineChart extends StatelessWidget {
   }) {
     return LineChartBarData(
       spots: spots,
-      isCurved: true,
+      isCurved: spots.length > 2,
+      curveSmoothness: _weightTrendCurveSmoothness,
       preventCurveOverShooting: true,
       barWidth: 3,
       color: color,
