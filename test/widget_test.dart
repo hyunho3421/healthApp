@@ -8,6 +8,8 @@ import 'package:muscle_growth_diary/core/widgets/centered_toast.dart';
 import 'package:muscle_growth_diary/features/database/providers/app_database_provider.dart';
 import 'package:muscle_growth_diary/features/exercise/application/exercise_service.dart';
 import 'package:muscle_growth_diary/features/exercise/data/exercise_repository.dart';
+import 'package:muscle_growth_diary/features/profile/application/user_profile_service.dart';
+import 'package:muscle_growth_diary/features/profile/data/user_profile_repository.dart';
 import 'package:muscle_growth_diary/features/stats/application/stats_service.dart';
 import 'package:muscle_growth_diary/features/stats/data/stats_repository.dart';
 import 'package:muscle_growth_diary/features/workout/application/workout_service.dart';
@@ -38,6 +40,19 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> openWorkoutRecordList(WidgetTester tester) async {
+    final recordsButton = find.widgetWithText(TextButton, '기록 보기');
+    await tester.ensureVisible(recordsButton);
+    await tester.pumpAndSettle();
+    await tester.tap(recordsButton);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> openStatsScreen(WidgetTester tester) async {
+    await tester.tap(find.byTooltip('운동 통계'));
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('shows empty record list and opens add workout screen', (
     tester,
   ) async {
@@ -49,12 +64,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Muscle Diary'), findsOneWidget);
-    expect(find.text('이번 주 운동 부위'), findsOneWidget);
+    expect(find.text('이번 주 부위별 운동'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, '기록 보기'), findsOneWidget);
     expect(find.text('휴식'), findsWidgets);
     expect(find.text('부위 필터'), findsNothing);
     expect(find.text('운동 필터'), findsNothing);
-    expect(find.textContaining('아직 운동 기록이 없어요'), findsOneWidget);
+    expect(find.textContaining('아직 이번 주 운동 기록이 없어요'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.add));
     await tester.pumpAndSettle();
@@ -221,7 +236,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      tester.takeException();
+      expect(tester.takeException(), isNull);
       expect(find.text('운동 유형'), findsOneWidget);
       expect(find.widgetWithText(ChoiceChip, '웨이트·머신'), findsOneWidget);
 
@@ -304,6 +319,11 @@ void main() {
 
     expect(find.text('운동 기록 추가'), findsNothing);
     expect(find.text('운동 기록을 저장했습니다.'), findsOneWidget);
+    expect(find.textContaining('아직 이번 주 운동 기록이 없어요'), findsNothing);
+
+    await openWorkoutRecordList(tester);
+
+    expect(find.text('운동 기록'), findsOneWidget);
     expect(find.text('벤치프레스'), findsOneWidget);
     expect(find.text('가슴'), findsWidgets);
     expect(find.text('1세트'), findsOneWidget);
@@ -348,6 +368,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await openWorkoutRecordList(tester);
+
     expect(find.text('2026.05.16'), findsWidgets);
     expect(find.text('벤치프레스'), findsOneWidget);
     expect(find.text('가슴'), findsWidgets);
@@ -384,9 +406,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('운동 기록 전체보기'), findsOneWidget);
-    await tester.tap(find.byTooltip('운동 기록 전체보기'));
-    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextButton, '기록 보기'), findsOneWidget);
+    await openWorkoutRecordList(tester);
 
     expect(find.text('운동 기록'), findsOneWidget);
     expect(find.text('전용 페이지 확인'), findsOneWidget);
@@ -396,7 +417,7 @@ void main() {
     await tester.tap(find.byTooltip('뒤로가기'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Muscle Diary'), findsOneWidget);
+    expect(find.text('이번 주 부위별 운동'), findsOneWidget);
   });
 
   testWidgets(
@@ -434,6 +455,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+
+      await openWorkoutRecordList(tester);
 
       final summaryFinder = find.byKey(
         const ValueKey('record-date-summary-20260516'),
@@ -493,6 +516,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+
+    await openWorkoutRecordList(tester);
 
     final summaryFinder = find.byKey(
       const ValueKey('record-date-summary-20260516'),
@@ -810,8 +835,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('통계'));
-    await tester.pumpAndSettle();
+    await openStatsScreen(tester);
 
     expect(find.text('부위 필터'), findsNothing);
     expect(find.text('운동 필터'), findsNothing);
@@ -847,8 +871,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('통계'));
-    await tester.pumpAndSettle();
+    await openStatsScreen(tester);
     expect(find.text('관심 운동 상세 통계'), findsNothing);
     expect(find.text('스쿼트 통계'), findsOneWidget);
     expect(find.text('주별 기준 하체 · 스쿼트 기록입니다.'), findsOneWidget);
@@ -883,11 +906,30 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await openWorkoutRecordList(tester);
 
     expect(find.text('20kcal'), findsOneWidget);
     expect(find.textContaining('70kg 기준'), findsNothing);
 
-    await tester.tap(find.byTooltip('설정/프로필'));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appDatabaseProvider.overrideWithValue(database)],
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => Navigator.of(context).push<bool>(
+                MaterialPageRoute(
+                  builder: (_) => const ProfileSettingsScreen(),
+                ),
+              ),
+              child: const Text('프로필 열기'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('프로필 열기'));
     await tester.pumpAndSettle();
 
     expect(find.text('설정/프로필'), findsOneWidget);
@@ -898,11 +940,24 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '저장'));
     await tester.pumpAndSettle();
 
-    expect(find.text('프로필을 저장했습니다.'), findsOneWidget);
+    expect(
+      await UserProfileService(
+        UserProfileRepository(database),
+      ).getBodyWeightKg(),
+      80,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appDatabaseProvider.overrideWithValue(database)],
+        child: const MyApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await openWorkoutRecordList(tester);
+
     expect(find.text('예상 23kcal'), findsOneWidget);
     expect(find.textContaining('70kg 기준'), findsNothing);
-
-    await tester.pump(const Duration(milliseconds: 1500));
   });
 
   testWidgets('opens saved workout from home and updates it immediately', (
@@ -932,6 +987,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+
+    await openWorkoutRecordList(tester);
 
     await tester.ensureVisible(find.text('벤치프레스'));
     await tester.pumpAndSettle();
@@ -1008,6 +1065,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await openWorkoutRecordList(tester);
+
     expect(find.text('벤치프레스'), findsOneWidget);
     expect(find.text('삭제할 메모'), findsOneWidget);
 
@@ -1074,8 +1133,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('통계'));
-    await tester.pumpAndSettle();
+    await openStatsScreen(tester);
 
     expect(find.text('운동 통계'), findsOneWidget);
     expect(find.text('관심 운동'), findsOneWidget);
@@ -1131,14 +1189,14 @@ void main() {
     expect(find.text('일 평균 중량'), findsOneWidget);
     expect(find.text('일 총 볼륨'), findsOneWidget);
     expect(find.text('전일 대비 총 볼륨'), findsOneWidget);
-    expect(find.text('일별 최고 중량'), findsOneWidget);
+    expect(find.text('일별 중량 그래프'), findsOneWidget);
 
     await tester.tap(find.text('주간'));
     await tester.pumpAndSettle();
 
     expect(find.text('주 최고 중량'), findsOneWidget);
     expect(find.text('전주 대비 총 볼륨'), findsOneWidget);
-    expect(find.text('주별 최고 중량'), findsOneWidget);
+    expect(find.text('주별 중량 그래프'), findsOneWidget);
   });
 
   testWidgets(
@@ -1161,8 +1219,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('통계'));
-      await tester.pumpAndSettle();
+      await openStatsScreen(tester);
 
       expect(find.text('부위 필터'), findsNothing);
       expect(find.text('운동 필터'), findsNothing);

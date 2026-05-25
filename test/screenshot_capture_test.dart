@@ -39,7 +39,7 @@ void main() {
       matchesGoldenFile('goldens/current_home.png'),
     );
 
-    await tester.tap(find.byTooltip('통계'));
+    await tester.tap(find.byTooltip('운동 통계'));
     await tester.pumpAndSettle();
 
     await expectLater(
