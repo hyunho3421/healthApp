@@ -371,13 +371,18 @@ class _WorkoutRecordListScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('기록 삭제'),
+        title: Row(
+          children: [
+            const Expanded(child: Text('기록 삭제')),
+            IconButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              icon: const Icon(Icons.close_rounded),
+              tooltip: '닫기',
+            ),
+          ],
+        ),
         content: Text('${item.entry.exercise.name} 기록을 삭제할까요?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('취소'),
-          ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
@@ -469,7 +474,6 @@ class _WorkoutRecordListScreenState
                     loadMoreError: _recordsLoadError,
                     onLoadMoreRetry: _loadMoreRecords,
                     bodyWeightKg: weightSnapshot.data ?? 70,
-                    usesDefaultBodyWeight: weightSnapshot.data == null,
                     focusedDate: _focusedDate,
                     focusRequestId: _focusRequestId,
                     onRecordTap: _openEditWorkout,
@@ -2130,7 +2134,6 @@ class _WorkoutRecordList extends StatefulWidget {
     required this.loadMoreError,
     required this.onLoadMoreRetry,
     required this.bodyWeightKg,
-    required this.usesDefaultBodyWeight,
     required this.focusedDate,
     required this.focusRequestId,
     required this.onRecordTap,
@@ -2144,7 +2147,6 @@ class _WorkoutRecordList extends StatefulWidget {
   final Object? loadMoreError;
   final VoidCallback onLoadMoreRetry;
   final double bodyWeightKg;
-  final bool usesDefaultBodyWeight;
   final DateTime? focusedDate;
   final int focusRequestId;
   final ValueChanged<_RecordEntryItem> onRecordTap;
@@ -2234,12 +2236,10 @@ class _WorkoutRecordListState extends State<_WorkoutRecordList> {
               _RecordDateSummaryItem() => _WorkoutDateSummaryCard(
                 item: item,
                 bodyWeightKg: widget.bodyWeightKg,
-                usesDefaultBodyWeight: widget.usesDefaultBodyWeight,
               ),
               _RecordEntryItem() => _WorkoutRecordCard(
                 item: item,
                 bodyWeightKg: widget.bodyWeightKg,
-                usesDefaultBodyWeight: widget.usesDefaultBodyWeight,
                 onTap: () => widget.onRecordTap(item),
                 onDelete: () => widget.onRecordDelete(item),
               ),
@@ -2277,12 +2277,10 @@ class _WorkoutDateSummaryCard extends StatelessWidget {
   const _WorkoutDateSummaryCard({
     required this.item,
     required this.bodyWeightKg,
-    required this.usesDefaultBodyWeight,
   });
 
   final _RecordDateSummaryItem item;
   final double bodyWeightKg;
-  final bool usesDefaultBodyWeight;
 
   @override
   Widget build(BuildContext context) {
@@ -2366,7 +2364,7 @@ class _WorkoutDateSummaryCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '예상 ${estimatedCalories.round()}kcal${usesDefaultBodyWeight ? ' · 70kg 기준' : ''}',
+              '예상 ${estimatedCalories.round()}kcal',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
@@ -2382,14 +2380,12 @@ class _WorkoutRecordCard extends StatelessWidget {
   const _WorkoutRecordCard({
     required this.item,
     required this.bodyWeightKg,
-    required this.usesDefaultBodyWeight,
     required this.onTap,
     required this.onDelete,
   });
 
   final _RecordEntryItem item;
   final double bodyWeightKg;
-  final bool usesDefaultBodyWeight;
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
@@ -2500,8 +2496,6 @@ class _WorkoutRecordCard extends StatelessWidget {
                   ),
                   if (warmupSetCount > 0)
                     _RecordChip(label: '워밍업 $warmupSetCount세트'),
-                  if (usesDefaultBodyWeight)
-                    const _RecordChip(label: '70kg 기준'),
                 ],
               ),
               if (memoSummary != null) ...[

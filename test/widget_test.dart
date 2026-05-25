@@ -354,7 +354,7 @@ void main() {
     expect(find.text('2세트'), findsOneWidget);
     expect(find.text('1120kg'), findsWidgets);
     expect(find.text('20kcal'), findsOneWidget);
-    expect(find.text('70kg 기준'), findsOneWidget);
+    expect(find.textContaining('70kg 기준'), findsNothing);
     expect(find.text('가볍게 시작'), findsOneWidget);
   });
 
@@ -452,10 +452,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(
-          of: summaryFinder,
-          matching: find.text('예상 31kcal · 70kg 기준'),
-        ),
+        find.descendant(of: summaryFinder, matching: find.text('예상 31kcal')),
         findsOneWidget,
       );
     },
@@ -506,15 +503,12 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(
-        of: summaryFinder,
-        matching: find.text('예상 32kcal · 70kg 기준'),
-      ),
+      find.descendant(of: summaryFinder, matching: find.text('예상 32kcal')),
       findsOneWidget,
     );
     expect(find.text('푸시업'), findsOneWidget);
     expect(find.text('12kcal'), findsOneWidget);
-    expect(find.text('70kg 기준'), findsWidgets);
+    expect(find.textContaining('70kg 기준'), findsNothing);
   });
 
   testWidgets('weekly body part day tap scrolls to that date records', (
@@ -891,7 +885,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('20kcal'), findsOneWidget);
-    expect(find.text('70kg 기준'), findsOneWidget);
+    expect(find.textContaining('70kg 기준'), findsNothing);
 
     await tester.tap(find.byTooltip('설정/프로필'));
     await tester.pumpAndSettle();
@@ -1024,6 +1018,22 @@ void main() {
 
     expect(find.text('기록 삭제'), findsOneWidget);
     expect(find.text('벤치프레스 기록을 삭제할까요?'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, '취소'), findsNothing);
+    expect(find.byTooltip('닫기'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('닫기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('기록 삭제'), findsNothing);
+    expect(find.text('벤치프레스'), findsOneWidget);
+    expect(find.text('삭제할 메모'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('기록 삭제'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('기록 삭제'), findsOneWidget);
+    expect(find.text('벤치프레스 기록을 삭제할까요?'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '삭제'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(FilledButton, '삭제'));
     await tester.pumpAndSettle();
