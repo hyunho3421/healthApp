@@ -51,6 +51,30 @@ class WorkoutService {
     );
   }
 
+  Future<WorkoutRecord?> findWorkoutRecordForDateAndExercise({
+    required DateTime date,
+    required int exerciseId,
+  }) async {
+    if (exerciseId <= 0) {
+      throw ArgumentError.value(exerciseId, 'exerciseId', '유효하지 않은 운동입니다.');
+    }
+
+    final dayStart = DateTime(date.year, date.month, date.day);
+    final records = await getWorkoutRecords(
+      from: dayStart,
+      to: dayStart.add(const Duration(days: 1)),
+      exerciseId: exerciseId,
+    );
+    for (final record in records) {
+      for (final entry in record.entries) {
+        if (entry.exercise.id == exerciseId) {
+          return WorkoutRecord(session: record.session, entries: [entry]);
+        }
+      }
+    }
+    return null;
+  }
+
   Future<int> getWorkoutSetCount() => _repository.getWorkoutSetCount();
 
   Future<void> deleteSession(int sessionId) =>

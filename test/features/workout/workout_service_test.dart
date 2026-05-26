@@ -113,6 +113,178 @@ void main() {
     expect(records.single.entries.single.sets.map((set) => set.reps), [5, 3]);
   });
 
+  test(
+    'finds an existing same-day exercise record ignoring time components',
+    () async {
+      final exercises = await database.select(database.exercises).get();
+      final benchPress = exercises.firstWhere(
+        (exercise) => exercise.name == '벤치프레스',
+      );
+      final squat = exercises.firstWhere((exercise) => exercise.name == '스쿼트');
+
+      final benchSessionId = await service.saveWorkout(
+        WorkoutDraft(
+          workoutDate: DateTime(2026, 5, 16, 9, 30),
+          memo: '오전 벤치',
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: benchPress.id,
+              sets: const [WorkoutSetDraft(weight: 60, reps: 10)],
+            ),
+          ],
+        ),
+      );
+      await service.saveWorkout(
+        WorkoutDraft(
+          workoutDate: DateTime(2026, 5, 16, 18),
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: squat.id,
+              sets: const [WorkoutSetDraft(weight: 100, reps: 5)],
+            ),
+          ],
+        ),
+      );
+
+      final existing = await service.findWorkoutRecordForDateAndExercise(
+        date: DateTime(2026, 5, 16, 23, 59),
+        exerciseId: benchPress.id,
+      );
+      final missing = await service.findWorkoutRecordForDateAndExercise(
+        date: DateTime(2026, 5, 17),
+        exerciseId: benchPress.id,
+      );
+
+      expect(existing, isNotNull);
+      expect(existing!.session.id, benchSessionId);
+      expect(existing.entries, hasLength(1));
+      expect(existing.entries.single.exercise.id, benchPress.id);
+      expect(existing.entries.single.sets.single.weight, 60);
+      expect(missing, isNull);
+    },
+  );
+
+  test(
+    'finds only the matching same-day exercise entry from a multi-entry session',
+    () async {
+      final exercises = await database.select(database.exercises).get();
+      final benchPress = exercises.firstWhere(
+        (exercise) => exercise.name == '벤치프레스',
+      );
+      final inclineBenchPress = exercises.firstWhere(
+        (exercise) => exercise.name == '인클라인 벤치프레스',
+      );
+      final chestPress = exercises.firstWhere(
+        (exercise) => exercise.name == '체스트프레스',
+      );
+
+      final sessionId = await service.saveWorkout(
+        WorkoutDraft(
+          workoutDate: DateTime(2026, 5, 16, 9, 30),
+          memo: '가슴 운동',
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: benchPress.id,
+              sets: const [WorkoutSetDraft(weight: 60, reps: 10)],
+            ),
+            WorkoutEntryDraft(
+              exerciseId: inclineBenchPress.id,
+              sets: const [
+                WorkoutSetDraft(weight: 80, reps: 8, isWarmup: true),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final existing = await service.findWorkoutRecordForDateAndExercise(
+        date: DateTime(2026, 5, 16, 23, 59),
+        exerciseId: inclineBenchPress.id,
+      );
+      final missing = await service.findWorkoutRecordForDateAndExercise(
+        date: DateTime(2026, 5, 16, 23, 59),
+        exerciseId: chestPress.id,
+      );
+
+      expect(existing, isNotNull);
+      expect(existing!.session.id, sessionId);
+      expect(existing.entries, hasLength(1));
+      expect(existing.entries.single.exercise.id, inclineBenchPress.id);
+      expect(existing.entries.single.sets.single.weight, 80);
+      expect(existing.entries.single.sets.single.reps, 8);
+      expect(existing.entries.single.sets.single.isWarmup, isTrue);
+      expect(missing, isNull);
+    },
+  );
+
+  test(
+    'updates located same-day exercise record instead of creating a duplicate',
+    () async {
+      final benchPress = (await database.select(database.exercises).get())
+          .firstWhere((exercise) => exercise.name == '벤치프레스');
+
+      final originalSessionId = await service.saveWorkout(
+        WorkoutDraft(
+          workoutDate: DateTime(2026, 5, 16, 9, 30),
+          memo: '수정 전',
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: benchPress.id,
+              sets: const [WorkoutSetDraft(weight: 60, reps: 10)],
+            ),
+          ],
+        ),
+      );
+
+      final existing = await service.findWorkoutRecordForDateAndExercise(
+        date: DateTime(2026, 5, 16, 20),
+        exerciseId: benchPress.id,
+      );
+
+      expect(existing, isNotNull);
+      final existingEntry = existing!.entries.single;
+      await service.updateWorkoutEntry(
+        sessionId: existing.session.id,
+        entryId: existingEntry.entry.id,
+        draft: WorkoutDraft(
+          workoutDate: DateTime(2026, 5, 16),
+          memo: '수정 후',
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: benchPress.id,
+              sets: const [
+                WorkoutSetDraft(weight: 65, reps: 8),
+                WorkoutSetDraft(weight: 70, reps: 6, isWarmup: true),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      final records = await service.getWorkoutRecords(
+        from: DateTime(2026, 5, 16),
+        to: DateTime(2026, 5, 17),
+        exerciseId: benchPress.id,
+      );
+
+      expect(records, hasLength(1));
+      expect(records.single.session.id, originalSessionId);
+      expect(records.single.session.memo, '수정 후');
+      expect(records.single.entries, hasLength(1));
+      expect(records.single.entries.single.entry.id, existingEntry.entry.id);
+      expect(records.single.entries.single.exercise.id, benchPress.id);
+      expect(records.single.entries.single.sets.map((set) => set.weight), [
+        65,
+        70,
+      ]);
+      expect(records.single.entries.single.sets.map((set) => set.reps), [8, 6]);
+      expect(records.single.entries.single.sets.map((set) => set.isWarmup), [
+        false,
+        true,
+      ]);
+    },
+  );
+
   test('deletes a workout entry and removes the empty session', () async {
     final benchPress = (await database.select(database.exercises).get())
         .firstWhere((exercise) => exercise.name == '벤치프레스');

@@ -343,8 +343,11 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
   final _memoController = TextEditingController();
   final List<_SetInput> _sets = [];
 
-  bool get _isEditMode =>
-      widget.editSessionId != null && widget.editingEntry != null;
+  late int? _editSessionId;
+  late WorkoutEntryRecord? _editingEntry;
+  late String? _initialMemo;
+
+  bool get _isEditMode => _editSessionId != null && _editingEntry != null;
 
   late DateTime _selectedDate;
   late Future<List<BodyPart>> _bodyPartsFuture;
@@ -353,6 +356,10 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
   int? _selectedBodyPartId;
   int? _selectedExerciseId;
   bool _isSaving = false;
+  int _existingWorkoutLookupToken = 0;
+  bool _isExerciseSelectionLockedFromAddFlow = false;
+
+  bool get _isExerciseSelectionLocked => _isExerciseSelectionLockedFromAddFlow;
 
   bool get _isSelectedExerciseBodyweight {
     final selectedExerciseId = _selectedExerciseId;
@@ -363,7 +370,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     if (selectedExercise != null) {
       return selectedExercise.type == 'bodyweight';
     }
-    final editingEntry = widget.editingEntry;
+    final editingEntry = _editingEntry;
     return editingEntry?.exercise.id == selectedExerciseId &&
         editingEntry?.exercise.type == 'bodyweight';
   }
@@ -371,7 +378,10 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
   @override
   void initState() {
     super.initState();
-    final editingEntry = widget.editingEntry;
+    _editSessionId = widget.editSessionId;
+    _editingEntry = widget.editingEntry;
+    _initialMemo = widget.initialMemo;
+    final editingEntry = _editingEntry;
     _selectedDate = widget.initialDate ?? DateTime.now();
     _bodyPartsFuture = ref.read(exerciseServiceProvider).getBodyParts();
 
@@ -386,7 +396,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     _exercisesFuture = ref
         .read(exerciseServiceProvider)
         .getExercises(bodyPartId: _selectedBodyPartId);
-    _memoController.text = editingEntry.entry.memo ?? widget.initialMemo ?? '';
+    _memoController.text = editingEntry.entry.memo ?? _initialMemo ?? '';
     _sets.addAll(
       editingEntry.sets.map(
         (set) => _SetInput(
@@ -411,6 +421,10 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
   }
 
   void _selectBodyPart(int? bodyPartId) {
+    if (_isExerciseSelectionLocked) {
+      return;
+    }
+    _existingWorkoutLookupToken++;
     setState(() {
       _selectedBodyPartId = bodyPartId;
       _selectedExerciseId = null;
@@ -423,6 +437,131 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     });
   }
 
+  Future<void> _selectExercise(int? exerciseId) async {
+    if (_isExerciseSelectionLocked) {
+      return;
+    }
+    final lookupToken = ++_existingWorkoutLookupToken;
+    final shouldLockExerciseSelectionIfExistingRecordLoads = !_isEditMode;
+    setState(() => _selectedExerciseId = exerciseId);
+    if (exerciseId != null) {
+      await _openExistingWorkoutEntryIfPresent(
+        exerciseId: exerciseId,
+        date: _selectedDate,
+        lookupToken: lookupToken,
+        lockExerciseSelectionAfterLoad:
+            shouldLockExerciseSelectionIfExistingRecordLoads,
+      );
+    }
+  }
+
+  Future<void> _openExistingWorkoutEntryIfPresent({
+    required int exerciseId,
+    required DateTime date,
+    required int lookupToken,
+    required bool lockExerciseSelectionAfterLoad,
+  }) async {
+    try {
+      final existingRecord = await ref
+          .read(workoutServiceProvider)
+          .findWorkoutRecordForDateAndExercise(
+            date: date,
+            exerciseId: exerciseId,
+          );
+      if (!mounted ||
+          lookupToken != _existingWorkoutLookupToken ||
+          _selectedExerciseId != exerciseId ||
+          !_isSameCalendarDay(_selectedDate, date)) {
+        return;
+      }
+      if (existingRecord == null || existingRecord.entries.isEmpty) {
+        if (_isEditMode) {
+          _resetEntryInputsForSelectedExercise();
+        }
+        return;
+      }
+      final existingEntry = existingRecord.entries.firstWhere(
+        (entry) => entry.exercise.id == exerciseId,
+        orElse: () => existingRecord.entries.first,
+      );
+      _loadExistingEntryForEditing(
+        sessionId: existingRecord.session.id,
+        entry: existingEntry,
+        date: existingRecord.session.workoutDate,
+        sessionMemo: existingRecord.session.memo,
+        lockExerciseSelection: lockExerciseSelectionAfterLoad,
+      );
+      CenteredToast.show(context, '이미 등록한 기록을 불러왔습니다.');
+    } catch (error) {
+      if (mounted &&
+          !_isEditMode &&
+          lookupToken == _existingWorkoutLookupToken &&
+          _selectedExerciseId == exerciseId &&
+          _isSameCalendarDay(_selectedDate, date)) {
+        CenteredToast.show(context, '기존 기록 확인에 실패했습니다: $error');
+      }
+    }
+  }
+
+  void _resetEntryInputsForSelectedExercise() {
+    for (final set in _sets) {
+      set.dispose();
+    }
+    setState(() {
+      _isExerciseSelectionLockedFromAddFlow = false;
+      _initialMemo = null;
+      _memoController.clear();
+      _sets
+        ..clear()
+        ..add(_SetInput());
+    });
+  }
+
+  void _loadExistingEntryForEditing({
+    required int sessionId,
+    required WorkoutEntryRecord entry,
+    required DateTime date,
+    required String? sessionMemo,
+    required bool lockExerciseSelection,
+  }) {
+    _existingWorkoutLookupToken++;
+    for (final set in _sets) {
+      set.dispose();
+    }
+    final loadedSets = entry.sets
+        .map(
+          (set) => _SetInput(
+            weight: _formatInputNumber(set.weight),
+            reps: set.reps.toString(),
+            isWarmup: set.isWarmup,
+          ),
+        )
+        .toList();
+    if (loadedSets.isEmpty) {
+      loadedSets.add(_SetInput());
+    }
+
+    setState(() {
+      _editSessionId = sessionId;
+      _editingEntry = entry;
+      _isExerciseSelectionLockedFromAddFlow = lockExerciseSelection;
+      _initialMemo = sessionMemo;
+      _selectedDate = date;
+      _selectedBodyPartId = entry.bodyPart.id;
+      _selectedExerciseId = entry.exercise.id;
+      _exercisesById
+        ..clear()
+        ..[entry.exercise.id] = entry.exercise;
+      _exercisesFuture = ref
+          .read(exerciseServiceProvider)
+          .getExercises(bodyPartId: entry.bodyPart.id);
+      _memoController.text = entry.entry.memo ?? sessionMemo ?? '';
+      _sets
+        ..clear()
+        ..addAll(loadedSets);
+    });
+  }
+
   Future<void> _openAddExercise() async {
     final result = await showDialog<_AddedExerciseResult>(
       context: context,
@@ -432,6 +571,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
       return;
     }
 
+    _existingWorkoutLookupToken++;
     setState(() {
       _selectedBodyPartId = result.bodyPartId;
       _selectedExerciseId = result.exerciseId;
@@ -460,6 +600,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
       return;
     }
 
+    _existingWorkoutLookupToken++;
     setState(() {
       _selectedBodyPartId = result.bodyPartId;
       _selectedExerciseId = result.exerciseId;
@@ -504,6 +645,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
       if (!mounted) {
         return;
       }
+      _existingWorkoutLookupToken++;
       setState(() {
         if (_selectedExerciseId == exercise.id) {
           _selectedExerciseId = null;
@@ -538,7 +680,17 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     if (picked == null || !mounted) {
       return;
     }
+    final lookupToken = ++_existingWorkoutLookupToken;
     setState(() => _selectedDate = picked);
+    final selectedExerciseId = _selectedExerciseId;
+    if (selectedExerciseId != null) {
+      await _openExistingWorkoutEntryIfPresent(
+        exerciseId: selectedExerciseId,
+        date: picked,
+        lookupToken: lookupToken,
+        lockExerciseSelectionAfterLoad: !_isEditMode,
+      );
+    }
   }
 
   void _addSet() {
@@ -560,7 +712,9 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
-    final exerciseId = _selectedExerciseId;
+    final exerciseId = _isExerciseSelectionLocked
+        ? _editingEntry?.exercise.id
+        : _selectedExerciseId;
     if (exerciseId == null) {
       CenteredToast.show(context, '운동을 선택해 주세요.');
       return;
@@ -591,8 +745,8 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
           ),
         ],
       );
-      final editSessionId = widget.editSessionId;
-      final editingEntry = widget.editingEntry;
+      final editSessionId = _editSessionId;
+      final editingEntry = _editingEntry;
       if (editSessionId == null || editingEntry == null) {
         await ref.read(workoutServiceProvider).saveWorkout(draft);
       } else {
@@ -665,7 +819,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                           label: '부위',
                           placeholder: '운동 부위 선택',
                           value: _selectedBodyPartId,
-                          enabled: !_isSaving,
+                          enabled: !_isSaving && !_isExerciseSelectionLocked,
                           options: [
                             for (final bodyPart in bodyParts)
                               _PickerOption(
@@ -683,9 +837,11 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                     _ExerciseDropdown(
                       future: _exercisesFuture,
                       selectedExerciseId: _selectedExerciseId,
-                      enabled: !_isSaving && _selectedBodyPartId != null,
-                      onChanged: (value) =>
-                          setState(() => _selectedExerciseId = value),
+                      enabled:
+                          !_isSaving &&
+                          !_isExerciseSelectionLocked &&
+                          _selectedBodyPartId != null,
+                      onChanged: _selectExercise,
                       onLoaded: (exercises) {
                         _exercisesById
                           ..clear()
@@ -695,13 +851,19 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                             ),
                           );
                       },
-                      onEdit: _isSaving ? null : _openEditExercise,
-                      onDelete: _isSaving ? null : _deleteExercise,
+                      onEdit: _isSaving || _isExerciseSelectionLocked
+                          ? null
+                          : _openEditExercise,
+                      onDelete: _isSaving || _isExerciseSelectionLocked
+                          ? null
+                          : _deleteExercise,
                     ),
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton.icon(
-                        onPressed: _isSaving ? null : _openAddExercise,
+                        onPressed: _isSaving || _isExerciseSelectionLocked
+                            ? null
+                            : _openAddExercise,
                         icon: const Icon(Icons.add_circle_outline_rounded),
                         label: const Text('새 운동 등록'),
                       ),
@@ -1768,6 +1930,12 @@ String? _validateReps(String? value) {
 String? _trimmedOrNull(String value) {
   final trimmed = value.trim();
   return trimmed.isEmpty ? null : trimmed;
+}
+
+bool _isSameCalendarDay(DateTime left, DateTime right) {
+  return left.year == right.year &&
+      left.month == right.month &&
+      left.day == right.day;
 }
 
 String _exerciseDisplayName(Exercise exercise) {
