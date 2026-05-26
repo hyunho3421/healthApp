@@ -28,6 +28,52 @@ void main() {
   });
 
   testWidgets(
+    'rest timer counts seconds and resets without workout persistence fields',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appDatabaseProvider.overrideWithValue(database)],
+          child: const MaterialApp(home: AddWorkoutScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('쉬는시간'), findsOneWidget);
+      expect(find.text('0:00'), findsOneWidget);
+      expect(find.text('0초'), findsOneWidget);
+
+      final restTimerOffset = tester.getTopLeft(find.text('쉬는시간')).dy;
+      final setsOffset = tester.getTopLeft(find.text('세트')).dy;
+      expect(restTimerOffset, lessThan(setsOffset));
+
+      await tester.tap(find.text('시작'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(find.text('측정 중'), findsOneWidget);
+      expect(find.text('0:02'), findsOneWidget);
+      expect(find.text('2초'), findsOneWidget);
+
+      await tester.tap(find.text('일시정지'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(find.text('대기 중'), findsOneWidget);
+      expect(find.text('0:02'), findsOneWidget);
+      expect(find.text('2초'), findsOneWidget);
+
+      await tester.tap(find.text('초기화'));
+      await tester.pump();
+
+      expect(find.text('0:00'), findsOneWidget);
+      expect(find.text('0초'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'add flow locks exercise selection after loading an existing same-day record',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(900, 1400));

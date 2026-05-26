@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -358,6 +360,9 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
   bool _isSaving = false;
   int _existingWorkoutLookupToken = 0;
   bool _isExerciseSelectionLockedFromAddFlow = false;
+  Timer? _restTimer;
+  int _restElapsedSeconds = 0;
+  bool _isRestTimerRunning = false;
 
   bool get _isExerciseSelectionLocked => _isExerciseSelectionLockedFromAddFlow;
 
@@ -413,6 +418,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
 
   @override
   void dispose() {
+    _restTimer?.cancel();
     _memoController.dispose();
     for (final set in _sets) {
       set.dispose();
@@ -425,6 +431,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
       return;
     }
     _existingWorkoutLookupToken++;
+    _resetRestTimer();
     setState(() {
       _selectedBodyPartId = bodyPartId;
       _selectedExerciseId = null;
@@ -443,6 +450,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     }
     final lookupToken = ++_existingWorkoutLookupToken;
     final shouldLockExerciseSelectionIfExistingRecordLoads = !_isEditMode;
+    _resetRestTimer();
     setState(() => _selectedExerciseId = exerciseId);
     if (exerciseId != null) {
       await _openExistingWorkoutEntryIfPresent(
@@ -517,6 +525,38 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     });
   }
 
+  void _startRestTimer() {
+    if (_isRestTimerRunning) {
+      return;
+    }
+    setState(() => _isRestTimerRunning = true);
+    _restTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _restElapsedSeconds++);
+    });
+  }
+
+  void _pauseRestTimer() {
+    _restTimer?.cancel();
+    _restTimer = null;
+    if (_isRestTimerRunning) {
+      setState(() => _isRestTimerRunning = false);
+    }
+  }
+
+  void _resetRestTimer() {
+    _restTimer?.cancel();
+    _restTimer = null;
+    if (_isRestTimerRunning || _restElapsedSeconds != 0) {
+      setState(() {
+        _isRestTimerRunning = false;
+        _restElapsedSeconds = 0;
+      });
+    }
+  }
+
   void _loadExistingEntryForEditing({
     required int sessionId,
     required WorkoutEntryRecord entry,
@@ -525,6 +565,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     required bool lockExerciseSelection,
   }) {
     _existingWorkoutLookupToken++;
+    _resetRestTimer();
     for (final set in _sets) {
       set.dispose();
     }
@@ -572,6 +613,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     }
 
     _existingWorkoutLookupToken++;
+    _resetRestTimer();
     setState(() {
       _selectedBodyPartId = result.bodyPartId;
       _selectedExerciseId = result.exerciseId;
@@ -601,6 +643,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     }
 
     _existingWorkoutLookupToken++;
+    _resetRestTimer();
     setState(() {
       _selectedBodyPartId = result.bodyPartId;
       _selectedExerciseId = result.exerciseId;
@@ -646,6 +689,9 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
         return;
       }
       _existingWorkoutLookupToken++;
+      if (_selectedExerciseId == exercise.id) {
+        _resetRestTimer();
+      }
       setState(() {
         if (_selectedExerciseId == exercise.id) {
           _selectedExerciseId = null;
@@ -681,6 +727,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
       return;
     }
     final lookupToken = ++_existingWorkoutLookupToken;
+    _resetRestTimer();
     setState(() => _selectedDate = picked);
     final selectedExerciseId = _selectedExerciseId;
     if (selectedExerciseId != null) {
@@ -869,6 +916,19 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                       ),
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              _FormSectionCard(
+                title: '쉬는시간',
+                subtitle: '세트 사이 시간을 초 단위로 확인하세요.',
+                child: _RestTimerPanel(
+                  elapsedSeconds: _restElapsedSeconds,
+                  isRunning: _isRestTimerRunning,
+                  enabled: !_isSaving,
+                  onStart: _startRestTimer,
+                  onPause: _pauseRestTimer,
+                  onReset: _resetRestTimer,
                 ),
               ),
               const SizedBox(height: 14),
@@ -1484,6 +1544,111 @@ class _WorkoutFormHero extends StatelessWidget {
   }
 }
 
+class _RestTimerPanel extends StatelessWidget {
+  const _RestTimerPanel({
+    required this.elapsedSeconds,
+    required this.isRunning,
+    required this.enabled,
+    required this.onStart,
+    required this.onPause,
+    required this.onReset,
+  });
+
+  final int elapsedSeconds;
+  final bool isRunning;
+  final bool enabled;
+  final VoidCallback onStart;
+  final VoidCallback onPause;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FBFF),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE1E8F2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F2FF),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(Icons.timer_outlined, color: colorScheme.primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isRunning ? '측정 중' : '대기 중',
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: const Color(0xFF6B7280),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _formatRestTimer(elapsedSeconds),
+                      semanticsLabel: '쉬는시간 $elapsedSeconds초',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
+                            color: const Color(0xFF111827),
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.4,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$elapsedSeconds초',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: const Color(0xFF6B7280),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: enabled ? (isRunning ? onPause : onStart) : null,
+                  icon: Icon(
+                    isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  ),
+                  label: Text(isRunning ? '일시정지' : '시작'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: enabled ? onReset : null,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('초기화'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _FormSectionCard extends StatelessWidget {
   const _FormSectionCard({
     required this.title,
@@ -1896,6 +2061,12 @@ class _SetInput {
     weightController.dispose();
     repsController.dispose();
   }
+}
+
+String _formatRestTimer(int seconds) {
+  final minutes = seconds ~/ 60;
+  final remainingSeconds = seconds % 60;
+  return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
 }
 
 String _formatInputNumber(double value) {
