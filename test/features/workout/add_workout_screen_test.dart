@@ -87,7 +87,7 @@ void main() {
   );
 
   testWidgets(
-    'set weight unit selector converts kg display to lbs and saves kg value',
+    'set weight unit selector does not mutate entered value and saves selected unit',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(900, 1400));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -127,7 +127,6 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('무게 단위'), findsOneWidget);
       expect(find.text('무게(kg)'), findsOneWidget);
       expect(_fieldValues(tester), containsAllInOrder(['100', '5']));
 
@@ -135,7 +134,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('무게(lbs)'), findsOneWidget);
-      expect(_fieldValues(tester), containsAllInOrder(['220.46', '5']));
+      expect(_fieldValues(tester), containsAllInOrder(['100', '5']));
 
       await tester.tap(find.text('수정 저장'));
       await tester.pumpAndSettle();
@@ -144,10 +143,8 @@ void main() {
         date: DateTime(2026, 5, 20),
         exerciseId: benchPress.id,
       );
-      expect(
-        savedRecord!.entries.single.sets.single.weight,
-        closeTo(100, 0.01),
-      );
+      expect(savedRecord!.entries.single.sets.single.weight, 100);
+      expect(savedRecord.entries.single.sets.single.weightUnit, 'lbs');
 
       await _settleToastTimers(tester);
     },

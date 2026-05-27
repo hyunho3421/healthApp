@@ -4,6 +4,7 @@ import '../../../core/db/app_database.dart';
 import '../models/exercise_stats_period.dart';
 import '../models/favorite_exercise_stats.dart';
 import '../models/monthly_exercise_stats.dart';
+import '../../workout/models/workout_draft.dart';
 
 class StatsRepository {
   StatsRepository(this._database);
@@ -133,16 +134,17 @@ class StatsRepository {
         session.workoutDate.day,
       );
       workoutDays.add(workoutDay);
+      final weightKg = workoutWeightInKg(set.weight, set.weightUnit);
       if (lastWorkoutDate == null || workoutDay.isAfter(lastWorkoutDate)) {
         lastWorkoutDate = workoutDay;
       }
       if (maxWeightReps == 0 ||
-          set.weight > maxWeight ||
-          (set.weight == maxWeight && set.reps > maxWeightReps)) {
-        maxWeight = set.weight;
+          weightKg > maxWeight ||
+          (weightKg == maxWeight && set.reps > maxWeightReps)) {
+        maxWeight = weightKg;
         maxWeightReps = set.reps;
       }
-      totalVolume += set.weight * set.reps;
+      totalVolume += weightKg * set.reps;
       setCount += 1;
     }
 
@@ -296,11 +298,12 @@ class _StatsAccumulator {
   double get averageWeight => setCount == 0 ? 0 : totalWeight / setCount;
 
   void add(WorkoutSet set) {
-    if (setCount == 0 || set.weight > maxWeight) {
-      maxWeight = set.weight;
+    final weightKg = workoutWeightInKg(set.weight, set.weightUnit);
+    if (setCount == 0 || weightKg > maxWeight) {
+      maxWeight = weightKg;
     }
-    totalWeight += set.weight;
-    totalVolume += set.weight * set.reps;
+    totalWeight += weightKg;
+    totalVolume += weightKg * set.reps;
     setCount += 1;
   }
 }

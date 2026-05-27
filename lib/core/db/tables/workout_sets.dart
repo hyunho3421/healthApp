@@ -9,6 +9,8 @@ class WorkoutSets extends Table {
       .references(WorkoutEntries, #id, onDelete: KeyAction.cascade)();
   IntColumn get setNumber => integer().named('set_number')();
   RealColumn get weight => real()();
+  TextColumn get weightUnit =>
+      text().named('weight_unit').withDefault(const Constant('kg'))();
   IntColumn get reps => integer()();
   BoolColumn get isWarmup =>
       boolean().named('is_warmup').withDefault(const Constant(false))();

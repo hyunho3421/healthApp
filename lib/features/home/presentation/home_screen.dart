@@ -16,6 +16,7 @@ import '../../../core/widgets/centered_toast.dart';
 import '../../profile/presentation/profile_settings_screen.dart';
 import '../../profile/providers/user_profile_providers.dart';
 import '../../stats/presentation/stats_screen.dart';
+import '../../workout/models/workout_draft.dart';
 import '../../workout/models/workout_record.dart';
 import '../../workout/presentation/add_workout_screen.dart';
 import '../../workout/providers/workout_providers.dart';
@@ -500,6 +501,11 @@ const _trackedBodyParts = <String>['가슴', '등', '어깨', '팔', '하체', '
 
 String _normalizeBodyPartName(String name) {
   return name == '코어' ? '복근' : name;
+}
+
+String _formatWorkoutSetChip(WorkoutSet set) {
+  final unit = normalizeWorkoutWeightUnit(set.weightUnit);
+  return '${set.setNumber}세트 ${formatMetricNumber(set.weight)}$unit × ${set.reps}회';
 }
 
 Color _bodyPartStatusColor(int count) {
@@ -2619,7 +2625,8 @@ class _WorkoutRecordCard extends StatelessWidget {
     final warmupSetCount = entry.sets.where((set) => set.isWarmup).length;
     final totalVolume = entry.sets.fold<double>(
       0,
-      (sum, set) => sum + set.weight * set.reps,
+      (sum, set) =>
+          sum + workoutWeightInKg(set.weight, set.weightUnit) * set.reps,
     );
     final estimatedCalories = _estimateExerciseCalories(
       sets: entry.sets,
@@ -2718,6 +2725,8 @@ class _WorkoutRecordCard extends StatelessWidget {
                   ),
                   if (warmupSetCount > 0)
                     _RecordChip(label: '워밍업 $warmupSetCount세트'),
+                  for (final set in entry.sets)
+                    _RecordChip(label: _formatWorkoutSetChip(set)),
                 ],
               ),
               if (memoSummary != null) ...[
@@ -2908,7 +2917,8 @@ _RecordDateSummaryItem _buildDateSummaryItem({
       entries.add(entry);
       totalVolume += entry.sets.fold<double>(
         0,
-        (sum, set) => sum + set.weight * set.reps,
+        (sum, set) =>
+            sum + workoutWeightInKg(set.weight, set.weightUnit) * set.reps,
       );
     }
   }

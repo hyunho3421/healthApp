@@ -1678,6 +1678,18 @@ class $WorkoutSetsTable extends WorkoutSets
     type: DriftSqlType.double,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _weightUnitMeta = const VerificationMeta(
+    'weightUnit',
+  );
+  @override
+  late final GeneratedColumn<String> weightUnit = GeneratedColumn<String>(
+    'weight_unit',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('kg'),
+  );
   static const VerificationMeta _repsMeta = const VerificationMeta('reps');
   @override
   late final GeneratedColumn<int> reps = GeneratedColumn<int>(
@@ -1732,6 +1744,7 @@ class $WorkoutSetsTable extends WorkoutSets
     entryId,
     setNumber,
     weight,
+    weightUnit,
     reps,
     isWarmup,
     createdAt,
@@ -1775,6 +1788,12 @@ class $WorkoutSetsTable extends WorkoutSets
       );
     } else if (isInserting) {
       context.missing(_weightMeta);
+    }
+    if (data.containsKey('weight_unit')) {
+      context.handle(
+        _weightUnitMeta,
+        weightUnit.isAcceptableOrUnknown(data['weight_unit']!, _weightUnitMeta),
+      );
     }
     if (data.containsKey('reps')) {
       context.handle(
@@ -1831,6 +1850,10 @@ class $WorkoutSetsTable extends WorkoutSets
         DriftSqlType.double,
         data['${effectivePrefix}weight'],
       )!,
+      weightUnit: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}weight_unit'],
+      )!,
       reps: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}reps'],
@@ -1861,6 +1884,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
   final int entryId;
   final int setNumber;
   final double weight;
+  final String weightUnit;
   final int reps;
   final bool isWarmup;
   final DateTime createdAt;
@@ -1870,6 +1894,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     required this.entryId,
     required this.setNumber,
     required this.weight,
+    required this.weightUnit,
     required this.reps,
     required this.isWarmup,
     required this.createdAt,
@@ -1882,6 +1907,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     map['entry_id'] = Variable<int>(entryId);
     map['set_number'] = Variable<int>(setNumber);
     map['weight'] = Variable<double>(weight);
+    map['weight_unit'] = Variable<String>(weightUnit);
     map['reps'] = Variable<int>(reps);
     map['is_warmup'] = Variable<bool>(isWarmup);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -1895,6 +1921,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       entryId: Value(entryId),
       setNumber: Value(setNumber),
       weight: Value(weight),
+      weightUnit: Value(weightUnit),
       reps: Value(reps),
       isWarmup: Value(isWarmup),
       createdAt: Value(createdAt),
@@ -1912,6 +1939,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       entryId: serializer.fromJson<int>(json['entryId']),
       setNumber: serializer.fromJson<int>(json['setNumber']),
       weight: serializer.fromJson<double>(json['weight']),
+      weightUnit: serializer.fromJson<String>(json['weightUnit']),
       reps: serializer.fromJson<int>(json['reps']),
       isWarmup: serializer.fromJson<bool>(json['isWarmup']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -1926,6 +1954,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       'entryId': serializer.toJson<int>(entryId),
       'setNumber': serializer.toJson<int>(setNumber),
       'weight': serializer.toJson<double>(weight),
+      'weightUnit': serializer.toJson<String>(weightUnit),
       'reps': serializer.toJson<int>(reps),
       'isWarmup': serializer.toJson<bool>(isWarmup),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -1938,6 +1967,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     int? entryId,
     int? setNumber,
     double? weight,
+    String? weightUnit,
     int? reps,
     bool? isWarmup,
     DateTime? createdAt,
@@ -1947,6 +1977,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     entryId: entryId ?? this.entryId,
     setNumber: setNumber ?? this.setNumber,
     weight: weight ?? this.weight,
+    weightUnit: weightUnit ?? this.weightUnit,
     reps: reps ?? this.reps,
     isWarmup: isWarmup ?? this.isWarmup,
     createdAt: createdAt ?? this.createdAt,
@@ -1958,6 +1989,9 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
       entryId: data.entryId.present ? data.entryId.value : this.entryId,
       setNumber: data.setNumber.present ? data.setNumber.value : this.setNumber,
       weight: data.weight.present ? data.weight.value : this.weight,
+      weightUnit: data.weightUnit.present
+          ? data.weightUnit.value
+          : this.weightUnit,
       reps: data.reps.present ? data.reps.value : this.reps,
       isWarmup: data.isWarmup.present ? data.isWarmup.value : this.isWarmup,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -1972,6 +2006,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
           ..write('entryId: $entryId, ')
           ..write('setNumber: $setNumber, ')
           ..write('weight: $weight, ')
+          ..write('weightUnit: $weightUnit, ')
           ..write('reps: $reps, ')
           ..write('isWarmup: $isWarmup, ')
           ..write('createdAt: $createdAt, ')
@@ -1986,6 +2021,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
     entryId,
     setNumber,
     weight,
+    weightUnit,
     reps,
     isWarmup,
     createdAt,
@@ -1999,6 +2035,7 @@ class WorkoutSet extends DataClass implements Insertable<WorkoutSet> {
           other.entryId == this.entryId &&
           other.setNumber == this.setNumber &&
           other.weight == this.weight &&
+          other.weightUnit == this.weightUnit &&
           other.reps == this.reps &&
           other.isWarmup == this.isWarmup &&
           other.createdAt == this.createdAt &&
@@ -2010,6 +2047,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
   final Value<int> entryId;
   final Value<int> setNumber;
   final Value<double> weight;
+  final Value<String> weightUnit;
   final Value<int> reps;
   final Value<bool> isWarmup;
   final Value<DateTime> createdAt;
@@ -2019,6 +2057,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     this.entryId = const Value.absent(),
     this.setNumber = const Value.absent(),
     this.weight = const Value.absent(),
+    this.weightUnit = const Value.absent(),
     this.reps = const Value.absent(),
     this.isWarmup = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -2029,6 +2068,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     required int entryId,
     required int setNumber,
     required double weight,
+    this.weightUnit = const Value.absent(),
     required int reps,
     this.isWarmup = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -2042,6 +2082,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     Expression<int>? entryId,
     Expression<int>? setNumber,
     Expression<double>? weight,
+    Expression<String>? weightUnit,
     Expression<int>? reps,
     Expression<bool>? isWarmup,
     Expression<DateTime>? createdAt,
@@ -2052,6 +2093,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
       if (entryId != null) 'entry_id': entryId,
       if (setNumber != null) 'set_number': setNumber,
       if (weight != null) 'weight': weight,
+      if (weightUnit != null) 'weight_unit': weightUnit,
       if (reps != null) 'reps': reps,
       if (isWarmup != null) 'is_warmup': isWarmup,
       if (createdAt != null) 'created_at': createdAt,
@@ -2064,6 +2106,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     Value<int>? entryId,
     Value<int>? setNumber,
     Value<double>? weight,
+    Value<String>? weightUnit,
     Value<int>? reps,
     Value<bool>? isWarmup,
     Value<DateTime>? createdAt,
@@ -2074,6 +2117,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
       entryId: entryId ?? this.entryId,
       setNumber: setNumber ?? this.setNumber,
       weight: weight ?? this.weight,
+      weightUnit: weightUnit ?? this.weightUnit,
       reps: reps ?? this.reps,
       isWarmup: isWarmup ?? this.isWarmup,
       createdAt: createdAt ?? this.createdAt,
@@ -2095,6 +2139,9 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
     }
     if (weight.present) {
       map['weight'] = Variable<double>(weight.value);
+    }
+    if (weightUnit.present) {
+      map['weight_unit'] = Variable<String>(weightUnit.value);
     }
     if (reps.present) {
       map['reps'] = Variable<int>(reps.value);
@@ -2118,6 +2165,7 @@ class WorkoutSetsCompanion extends UpdateCompanion<WorkoutSet> {
           ..write('entryId: $entryId, ')
           ..write('setNumber: $setNumber, ')
           ..write('weight: $weight, ')
+          ..write('weightUnit: $weightUnit, ')
           ..write('reps: $reps, ')
           ..write('isWarmup: $isWarmup, ')
           ..write('createdAt: $createdAt, ')
@@ -4521,6 +4569,7 @@ typedef $$WorkoutSetsTableCreateCompanionBuilder =
       required int entryId,
       required int setNumber,
       required double weight,
+      Value<String> weightUnit,
       required int reps,
       Value<bool> isWarmup,
       Value<DateTime> createdAt,
@@ -4532,6 +4581,7 @@ typedef $$WorkoutSetsTableUpdateCompanionBuilder =
       Value<int> entryId,
       Value<int> setNumber,
       Value<double> weight,
+      Value<String> weightUnit,
       Value<int> reps,
       Value<bool> isWarmup,
       Value<DateTime> createdAt,
@@ -4583,6 +4633,11 @@ class $$WorkoutSetsTableFilterComposer
 
   ColumnFilters<double> get weight => $composableBuilder(
     column: $table.weight,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get weightUnit => $composableBuilder(
+    column: $table.weightUnit,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4654,6 +4709,11 @@ class $$WorkoutSetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get weightUnit => $composableBuilder(
+    column: $table.weightUnit,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get reps => $composableBuilder(
     column: $table.reps,
     builder: (column) => ColumnOrderings(column),
@@ -4715,6 +4775,11 @@ class $$WorkoutSetsTableAnnotationComposer
 
   GeneratedColumn<double> get weight =>
       $composableBuilder(column: $table.weight, builder: (column) => column);
+
+  GeneratedColumn<String> get weightUnit => $composableBuilder(
+    column: $table.weightUnit,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get reps =>
       $composableBuilder(column: $table.reps, builder: (column) => column);
@@ -4784,6 +4849,7 @@ class $$WorkoutSetsTableTableManager
                 Value<int> entryId = const Value.absent(),
                 Value<int> setNumber = const Value.absent(),
                 Value<double> weight = const Value.absent(),
+                Value<String> weightUnit = const Value.absent(),
                 Value<int> reps = const Value.absent(),
                 Value<bool> isWarmup = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -4793,6 +4859,7 @@ class $$WorkoutSetsTableTableManager
                 entryId: entryId,
                 setNumber: setNumber,
                 weight: weight,
+                weightUnit: weightUnit,
                 reps: reps,
                 isWarmup: isWarmup,
                 createdAt: createdAt,
@@ -4804,6 +4871,7 @@ class $$WorkoutSetsTableTableManager
                 required int entryId,
                 required int setNumber,
                 required double weight,
+                Value<String> weightUnit = const Value.absent(),
                 required int reps,
                 Value<bool> isWarmup = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -4813,6 +4881,7 @@ class $$WorkoutSetsTableTableManager
                 entryId: entryId,
                 setNumber: setNumber,
                 weight: weight,
+                weightUnit: weightUnit,
                 reps: reps,
                 isWarmup: isWarmup,
                 createdAt: createdAt,

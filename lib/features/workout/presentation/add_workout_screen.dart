@@ -363,7 +363,6 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
   Timer? _restTimer;
   int _restElapsedSeconds = 0;
   bool _isRestTimerRunning = false;
-  _WeightUnit _selectedWeightUnit = _WeightUnit.kg;
 
   bool get _isExerciseSelectionLocked => _isExerciseSelectionLockedFromAddFlow;
 
@@ -406,7 +405,8 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     _sets.addAll(
       editingEntry.sets.map(
         (set) => _SetInput(
-          weight: _formatWeightForUnit(set.weight, _selectedWeightUnit),
+          weight: _formatWeightForUnit(set.weight, set.weightUnit),
+          weightUnit: _weightUnitFromStorage(set.weightUnit),
           reps: set.reps.toString(),
           isWarmup: set.isWarmup,
         ),
@@ -577,7 +577,8 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     final loadedSets = entry.sets
         .map(
           (set) => _SetInput(
-            weight: _formatWeightForUnit(set.weight, _selectedWeightUnit),
+            weight: _formatWeightForUnit(set.weight, set.weightUnit),
+            weightUnit: _weightUnitFromStorage(set.weightUnit),
             reps: set.reps.toString(),
             isWarmup: set.isWarmup,
           ),
@@ -749,24 +750,12 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     setState(() => _sets.add(_SetInput()));
   }
 
-  void _selectWeightUnit(_WeightUnit nextUnit) {
-    if (nextUnit == _selectedWeightUnit) {
+  void _selectWeightUnit(int index, _WeightUnit nextUnit) {
+    final set = _sets[index];
+    if (nextUnit == set.weightUnit) {
       return;
     }
-    final previousUnit = _selectedWeightUnit;
-    for (final set in _sets) {
-      final text = set.weightController.text.trim();
-      if (text.isEmpty) {
-        continue;
-      }
-      final displayValue = double.tryParse(text);
-      if (displayValue == null) {
-        continue;
-      }
-      final kgValue = _displayWeightToKg(displayValue, previousUnit);
-      set.weightController.text = _formatWeightForUnit(kgValue, nextUnit);
-    }
-    setState(() => _selectedWeightUnit = nextUnit);
+    setState(() => set.weightUnit = nextUnit);
   }
 
   void _removeSet(int index) {
@@ -809,10 +798,10 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                 WorkoutSetDraft(
                   weight: _isSelectedExerciseBodyweight
                       ? 0
-                      : _displayWeightToKg(
-                          double.parse(set.weightController.text),
-                          _selectedWeightUnit,
-                        ),
+                      : double.parse(set.weightController.text),
+                  weightUnit: _isSelectedExerciseBodyweight
+                      ? workoutWeightUnitKg
+                      : set.weightUnit.storageValue,
                   reps: int.parse(set.repsController.text),
                   isWarmup: set.isWarmup,
                 ),
@@ -970,17 +959,9 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                 title: '세트',
                 subtitle: isBodyweightExercise
                     ? '${_sets.length}개 세트 입력 중'
-                    : '${_sets.length}개 세트 입력 중 · ${_selectedWeightUnit.label}',
+                    : '${_sets.length}개 세트 입력 중',
                 child: Column(
                   children: [
-                    if (!isBodyweightExercise) ...[
-                      _WeightUnitSelector(
-                        selectedUnit: _selectedWeightUnit,
-                        enabled: !_isSaving,
-                        onChanged: _selectWeightUnit,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
                     for (var index = 0; index < _sets.length; index++)
                       _SetInputRow(
                         key: ValueKey(_sets[index]),
@@ -988,7 +969,8 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                         input: _sets[index],
                         enabled: !_isSaving,
                         isBodyweightExercise: isBodyweightExercise,
-                        weightUnitLabel: _selectedWeightUnit.label,
+                        onWeightUnitChanged: (unit) =>
+                            _selectWeightUnit(index, unit),
                         onWarmupChanged: (value) => setState(
                           () => _sets[index].isWarmup = value ?? false,
                         ),
@@ -1487,15 +1469,15 @@ class _ArmDetailSelector extends StatelessWidget {
 enum _ExerciseAction { edit, delete }
 
 enum _WeightUnit {
-  kg('kg'),
-  lbs('lbs');
+  kg(workoutWeightUnitKg),
+  lbs(workoutWeightUnitLbs);
 
   const _WeightUnit(this.label);
 
   final String label;
-}
 
-const double _kgToLbs = 2.20462;
+  String get storageValue => label;
+}
 
 class _WorkoutFormHero extends StatelessWidget {
   const _WorkoutFormHero({
@@ -2046,68 +2028,35 @@ class _WeightUnitSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FBFF),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE1E8F2)),
+    return SegmentedButton<_WeightUnit>(
+      segments: const [
+        ButtonSegment(value: _WeightUnit.kg, label: Text('kg')),
+        ButtonSegment(value: _WeightUnit.lbs, label: Text('lbs')),
+      ],
+      selected: {selectedUnit},
+      showSelectedIcon: false,
+      style: ButtonStyle(
+        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        backgroundColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const Color(0xFFE8F2FF);
+          }
+          return Colors.white;
+        }),
+        foregroundColor: WidgetStateProperty.resolveWith((states) {
+          if (!enabled) {
+            return const Color(0xFF9CA3AF);
+          }
+          if (states.contains(WidgetState.selected)) {
+            return colorScheme.primary;
+          }
+          return const Color(0xFF4B5563);
+        }),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '무게 단위',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: const Color(0xFF6B7280),
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '세트 카드 입력값이 선택한 단위로 표시됩니다.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFF6B7280),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          SegmentedButton<_WeightUnit>(
-            segments: const [
-              ButtonSegment(value: _WeightUnit.kg, label: Text('kg')),
-              ButtonSegment(value: _WeightUnit.lbs, label: Text('lbs')),
-            ],
-            selected: {selectedUnit},
-            showSelectedIcon: false,
-            style: ButtonStyle(
-              visualDensity: VisualDensity.compact,
-              backgroundColor: WidgetStateProperty.resolveWith((states) {
-                if (states.contains(WidgetState.selected)) {
-                  return const Color(0xFFE8F2FF);
-                }
-                return Colors.white;
-              }),
-              foregroundColor: WidgetStateProperty.resolveWith((states) {
-                if (!enabled) {
-                  return const Color(0xFF9CA3AF);
-                }
-                if (states.contains(WidgetState.selected)) {
-                  return colorScheme.primary;
-                }
-                return const Color(0xFF4B5563);
-              }),
-            ),
-            onSelectionChanged: enabled
-                ? (selection) => onChanged(selection.first)
-                : null,
-          ),
-        ],
-      ),
+      onSelectionChanged: enabled
+          ? (selection) => onChanged(selection.first)
+          : null,
     );
   }
 }
@@ -2119,7 +2068,7 @@ class _SetInputRow extends StatelessWidget {
     required this.input,
     required this.enabled,
     required this.isBodyweightExercise,
-    required this.weightUnitLabel,
+    required this.onWeightUnitChanged,
     required this.onWarmupChanged,
     required this.onRemove,
   });
@@ -2128,87 +2077,120 @@ class _SetInputRow extends StatelessWidget {
   final _SetInput input;
   final bool enabled;
   final bool isBodyweightExercise;
-  final String weightUnitLabel;
+  final ValueChanged<_WeightUnit> onWeightUnitChanged;
   final ValueChanged<bool?> onWarmupChanged;
   final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 48,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 16),
-              child: Text('$setNumber세트'),
-            ),
-          ),
-          if (!isBodyweightExercise) ...[
-            Expanded(
-              child: TextFormField(
-                controller: input.weightController,
-                enabled: enabled,
-                onTapOutside: (_) =>
-                    FocusManager.instance.primaryFocus?.unfocus(),
-                decoration: InputDecoration(
-                  labelText: '무게($weightUnitLabel)',
-                  border: const OutlineInputBorder(),
-                ),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                validator: _validateWeight,
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Expanded(
-            child: TextFormField(
-              controller: input.repsController,
-              enabled: enabled,
-              onTapOutside: (_) =>
-                  FocusManager.instance.primaryFocus?.unfocus(),
-              decoration: const InputDecoration(
-                labelText: '횟수',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.number,
-              validator: _validateReps,
-            ),
-          ),
-          SizedBox(
-            width: 56,
-            child: Column(
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 0,
+      color: const Color(0xFFF8FBFF),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0xFFE1E8F2)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Row(
               children: [
-                Text('워밍업', style: Theme.of(context).textTheme.labelSmall),
-                Checkbox(
-                  value: input.isWarmup,
-                  onChanged: enabled ? onWarmupChanged : null,
+                Expanded(
+                  child: Text(
+                    '$setNumber세트',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                if (!isBodyweightExercise)
+                  _WeightUnitSelector(
+                    selectedUnit: input.weightUnit,
+                    enabled: enabled,
+                    onChanged: onWeightUnitChanged,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (!isBodyweightExercise) ...[
+                  Expanded(
+                    child: TextFormField(
+                      controller: input.weightController,
+                      enabled: enabled,
+                      onTapOutside: (_) =>
+                          FocusManager.instance.primaryFocus?.unfocus(),
+                      decoration: InputDecoration(
+                        labelText: '무게(${input.weightUnit.label})',
+                        border: const OutlineInputBorder(),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      validator: _validateWeight,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(
+                  child: TextFormField(
+                    controller: input.repsController,
+                    enabled: enabled,
+                    onTapOutside: (_) =>
+                        FocusManager.instance.primaryFocus?.unfocus(),
+                    decoration: const InputDecoration(
+                      labelText: '횟수',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    validator: _validateReps,
+                  ),
+                ),
+                SizedBox(
+                  width: 56,
+                  child: Column(
+                    children: [
+                      Text(
+                        '워밍업',
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                      Checkbox(
+                        value: input.isWarmup,
+                        onChanged: enabled ? onWarmupChanged : null,
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: enabled ? onRemove : null,
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: '세트 삭제',
                 ),
               ],
             ),
-          ),
-          IconButton(
-            onPressed: enabled ? onRemove : null,
-            icon: const Icon(Icons.delete_outline),
-            tooltip: '세트 삭제',
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
 class _SetInput {
-  _SetInput({String? weight, String? reps, this.isWarmup = false})
-    : weightController = TextEditingController(text: weight),
-      repsController = TextEditingController(text: reps);
+  _SetInput({
+    String? weight,
+    String? reps,
+    this.weightUnit = _WeightUnit.kg,
+    this.isWarmup = false,
+  }) : weightController = TextEditingController(text: weight),
+       repsController = TextEditingController(text: reps);
 
   final TextEditingController weightController;
   final TextEditingController repsController;
+  _WeightUnit weightUnit;
   bool isWarmup;
 
   void dispose() {
@@ -2233,22 +2215,19 @@ String _formatInputNumber(double value, {int fractionDigits = 10}) {
       .replaceFirst(RegExp(r'\.$'), '');
 }
 
-String _formatWeightForUnit(double kgValue, _WeightUnit unit) {
-  final displayValue = switch (unit) {
-    _WeightUnit.kg => kgValue,
-    _WeightUnit.lbs => kgValue * _kgToLbs,
-  };
+String _formatWeightForUnit(double value, String? unit) {
   return _formatInputNumber(
-    displayValue,
-    fractionDigits: unit == _WeightUnit.kg ? 10 : 2,
+    value,
+    fractionDigits: normalizeWorkoutWeightUnit(unit) == workoutWeightUnitKg
+        ? 10
+        : 2,
   );
 }
 
-double _displayWeightToKg(double displayValue, _WeightUnit unit) {
-  return switch (unit) {
-    _WeightUnit.kg => displayValue,
-    _WeightUnit.lbs => displayValue / _kgToLbs,
-  };
+_WeightUnit _weightUnitFromStorage(String? value) {
+  return normalizeWorkoutWeightUnit(value) == workoutWeightUnitLbs
+      ? _WeightUnit.lbs
+      : _WeightUnit.kg;
 }
 
 String? _validateWeight(String? value) {

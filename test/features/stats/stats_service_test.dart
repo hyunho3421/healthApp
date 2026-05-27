@@ -113,6 +113,36 @@ void main() {
     expect(stats.last.previousTotalVolumeRate, 40);
   });
 
+  test('converts lbs workout sets to kg for statistics', () async {
+    final benchPress = (await database.select(database.exercises).get())
+        .firstWhere((exercise) => exercise.name == '벤치프레스');
+
+    await workoutService.saveWorkout(
+      WorkoutDraft(
+        workoutDate: DateTime(2026, 5, 4),
+        entries: [
+          WorkoutEntryDraft(
+            exerciseId: benchPress.id,
+            sets: const [
+              WorkoutSetDraft(weight: 220.462, weightUnit: 'lbs', reps: 5),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    final stats = await statsService.getExerciseStats(
+      exerciseId: benchPress.id,
+      periodUnit: StatsPeriodUnit.daily,
+      recentCount: 7,
+      anchorDate: DateTime(2026, 5, 4),
+    );
+
+    expect(stats.single.maxWeight, closeTo(100, 0.01));
+    expect(stats.single.averageWeight, closeTo(100, 0.01));
+    expect(stats.single.totalVolume, closeTo(500, 0.01));
+  });
+
   test(
     'calculates monthly max, average, volume, and previous deltas',
     () async {

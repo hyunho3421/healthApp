@@ -34,7 +34,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -69,6 +69,9 @@ class AppDatabase extends _$AppDatabase {
         await customStatement(
           'ALTER TABLE exercises ADD COLUMN arm_detail TEXT',
         );
+      }
+      if (from < 8) {
+        await m.addColumn(workoutSets, workoutSets.weightUnit);
       }
     },
     beforeOpen: (details) async {
