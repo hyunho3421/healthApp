@@ -143,7 +143,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 await _homeSummaryFuture;
               },
               child: ListView(
-                padding: const EdgeInsets.only(bottom: 96),
+                padding: const EdgeInsets.only(bottom: 24),
                 children: [
                   _WeeklyBodyStatusCard(
                     records: weeklyRecords,
@@ -164,11 +164,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             );
           },
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openAddWorkout,
-        icon: const Icon(Icons.add),
-        label: const Text('기록 추가'),
       ),
     );
   }

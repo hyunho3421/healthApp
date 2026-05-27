@@ -945,11 +945,6 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
               _FormSectionCard(
                 title: '세트',
                 subtitle: '${_sets.length}개 세트 입력 중',
-                trailing: TextButton.icon(
-                  onPressed: _isSaving ? null : _addSet,
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('추가'),
-                ),
                 child: Column(
                   children: [
                     for (var index = 0; index < _sets.length; index++)
@@ -964,6 +959,12 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                         ),
                         onRemove: () => _removeSet(index),
                       ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: _isSaving ? null : _addSet,
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('세트 추가'),
+                    ),
                   ],
                 ),
               ),
@@ -1677,7 +1678,6 @@ class _FormSectionCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.child,
-    this.trailing,
     this.padding = const EdgeInsets.all(18),
     this.childSpacing = 16,
   });
@@ -1685,7 +1685,6 @@ class _FormSectionCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final Widget child;
-  final Widget? trailing;
   final EdgeInsetsGeometry padding;
   final double childSpacing;
 
@@ -1720,7 +1719,6 @@ class _FormSectionCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                ?trailing,
               ],
             ),
             SizedBox(height: childSpacing),

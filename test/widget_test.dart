@@ -66,6 +66,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> openAddWorkoutScreen(WidgetTester tester) async {
+    final addButton = find.widgetWithText(FilledButton, '빠른 기록 시작');
+    await tester.ensureVisible(addButton);
+    await tester.pumpAndSettle();
+    await tester.tap(addButton);
+    await tester.pumpAndSettle();
+  }
+
   Future<void> openStatsScreen(WidgetTester tester) async {
     await tester.tap(find.byTooltip('운동 통계'));
     await tester.pumpAndSettle();
@@ -112,8 +120,7 @@ void main() {
     expect(find.text('운동 필터'), findsNothing);
     expect(find.textContaining('아직 이번 주 운동 기록이 없어요'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pumpAndSettle();
+    await openAddWorkoutScreen(tester);
 
     expect(find.text('운동 기록 추가'), findsOneWidget);
     expect(find.text('날짜'), findsOneWidget);
@@ -159,8 +166,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.add).last);
-    await tester.pumpAndSettle();
+    await openAddWorkoutScreen(tester);
     await tester.tap(find.text('새 운동 등록'));
     await tester.pumpAndSettle();
 
@@ -199,8 +205,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.add).last);
-    await tester.pumpAndSettle();
+    await openAddWorkoutScreen(tester);
     await tester.tap(find.text('새 운동 등록'));
     await tester.pumpAndSettle();
     await pickSheetOption(tester, placeholder: '운동 부위 선택', option: '가슴');
@@ -264,8 +269,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.add).last);
-      await tester.pumpAndSettle();
+      await openAddWorkoutScreen(tester);
       await tester.tap(find.text('새 운동 등록'));
       await tester.pumpAndSettle();
 
@@ -336,8 +340,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.add).last);
-    await tester.pumpAndSettle();
+    await openAddWorkoutScreen(tester);
 
     await pickSheetOption(tester, placeholder: '운동 부위 선택', option: '가슴');
 
@@ -1314,8 +1317,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.add).last);
-      await tester.pumpAndSettle();
+      await openAddWorkoutScreen(tester);
 
       await tester.tap(find.text('새 운동 등록'));
       await tester.pumpAndSettle();
