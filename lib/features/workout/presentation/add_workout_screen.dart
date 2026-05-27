@@ -363,6 +363,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
   Timer? _restTimer;
   int _restElapsedSeconds = 0;
   bool _isRestTimerRunning = false;
+  _WeightUnit _selectedWeightUnit = _WeightUnit.kg;
 
   bool get _isExerciseSelectionLocked => _isExerciseSelectionLockedFromAddFlow;
 
@@ -405,7 +406,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     _sets.addAll(
       editingEntry.sets.map(
         (set) => _SetInput(
-          weight: _formatInputNumber(set.weight),
+          weight: _formatWeightForUnit(set.weight, _selectedWeightUnit),
           reps: set.reps.toString(),
           isWarmup: set.isWarmup,
         ),
@@ -576,7 +577,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     final loadedSets = entry.sets
         .map(
           (set) => _SetInput(
-            weight: _formatInputNumber(set.weight),
+            weight: _formatWeightForUnit(set.weight, _selectedWeightUnit),
             reps: set.reps.toString(),
             isWarmup: set.isWarmup,
           ),
@@ -748,6 +749,26 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     setState(() => _sets.add(_SetInput()));
   }
 
+  void _selectWeightUnit(_WeightUnit nextUnit) {
+    if (nextUnit == _selectedWeightUnit) {
+      return;
+    }
+    final previousUnit = _selectedWeightUnit;
+    for (final set in _sets) {
+      final text = set.weightController.text.trim();
+      if (text.isEmpty) {
+        continue;
+      }
+      final displayValue = double.tryParse(text);
+      if (displayValue == null) {
+        continue;
+      }
+      final kgValue = _displayWeightToKg(displayValue, previousUnit);
+      set.weightController.text = _formatWeightForUnit(kgValue, nextUnit);
+    }
+    setState(() => _selectedWeightUnit = nextUnit);
+  }
+
   void _removeSet(int index) {
     if (_sets.length == 1) {
       CenteredToast.show(context, '세트는 1개 이상 필요합니다.');
@@ -788,7 +809,10 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                 WorkoutSetDraft(
                   weight: _isSelectedExerciseBodyweight
                       ? 0
-                      : double.parse(set.weightController.text),
+                      : _displayWeightToKg(
+                          double.parse(set.weightController.text),
+                          _selectedWeightUnit,
+                        ),
                   reps: int.parse(set.repsController.text),
                   isWarmup: set.isWarmup,
                 ),
@@ -944,9 +968,19 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
               const SizedBox(height: 14),
               _FormSectionCard(
                 title: '세트',
-                subtitle: '${_sets.length}개 세트 입력 중',
+                subtitle: isBodyweightExercise
+                    ? '${_sets.length}개 세트 입력 중'
+                    : '${_sets.length}개 세트 입력 중 · ${_selectedWeightUnit.label}',
                 child: Column(
                   children: [
+                    if (!isBodyweightExercise) ...[
+                      _WeightUnitSelector(
+                        selectedUnit: _selectedWeightUnit,
+                        enabled: !_isSaving,
+                        onChanged: _selectWeightUnit,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     for (var index = 0; index < _sets.length; index++)
                       _SetInputRow(
                         key: ValueKey(_sets[index]),
@@ -954,6 +988,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                         input: _sets[index],
                         enabled: !_isSaving,
                         isBodyweightExercise: isBodyweightExercise,
+                        weightUnitLabel: _selectedWeightUnit.label,
                         onWarmupChanged: (value) => setState(
                           () => _sets[index].isWarmup = value ?? false,
                         ),
@@ -1450,6 +1485,17 @@ class _ArmDetailSelector extends StatelessWidget {
 }
 
 enum _ExerciseAction { edit, delete }
+
+enum _WeightUnit {
+  kg('kg'),
+  lbs('lbs');
+
+  const _WeightUnit(this.label);
+
+  final String label;
+}
+
+const double _kgToLbs = 2.20462;
 
 class _WorkoutFormHero extends StatelessWidget {
   const _WorkoutFormHero({
@@ -1986,6 +2032,86 @@ class _PickerSheet<T> extends StatelessWidget {
   }
 }
 
+class _WeightUnitSelector extends StatelessWidget {
+  const _WeightUnitSelector({
+    required this.selectedUnit,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final _WeightUnit selectedUnit;
+  final bool enabled;
+  final ValueChanged<_WeightUnit> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FBFF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE1E8F2)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '무게 단위',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: const Color(0xFF6B7280),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '세트 카드 입력값이 선택한 단위로 표시됩니다.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          SegmentedButton<_WeightUnit>(
+            segments: const [
+              ButtonSegment(value: _WeightUnit.kg, label: Text('kg')),
+              ButtonSegment(value: _WeightUnit.lbs, label: Text('lbs')),
+            ],
+            selected: {selectedUnit},
+            showSelectedIcon: false,
+            style: ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              backgroundColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return const Color(0xFFE8F2FF);
+                }
+                return Colors.white;
+              }),
+              foregroundColor: WidgetStateProperty.resolveWith((states) {
+                if (!enabled) {
+                  return const Color(0xFF9CA3AF);
+                }
+                if (states.contains(WidgetState.selected)) {
+                  return colorScheme.primary;
+                }
+                return const Color(0xFF4B5563);
+              }),
+            ),
+            onSelectionChanged: enabled
+                ? (selection) => onChanged(selection.first)
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SetInputRow extends StatelessWidget {
   const _SetInputRow({
     super.key,
@@ -1993,6 +2119,7 @@ class _SetInputRow extends StatelessWidget {
     required this.input,
     required this.enabled,
     required this.isBodyweightExercise,
+    required this.weightUnitLabel,
     required this.onWarmupChanged,
     required this.onRemove,
   });
@@ -2001,6 +2128,7 @@ class _SetInputRow extends StatelessWidget {
   final _SetInput input;
   final bool enabled;
   final bool isBodyweightExercise;
+  final String weightUnitLabel;
   final ValueChanged<bool?> onWarmupChanged;
   final VoidCallback onRemove;
 
@@ -2025,9 +2153,9 @@ class _SetInputRow extends StatelessWidget {
                 enabled: enabled,
                 onTapOutside: (_) =>
                     FocusManager.instance.primaryFocus?.unfocus(),
-                decoration: const InputDecoration(
-                  labelText: '무게(kg)',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: '무게($weightUnitLabel)',
+                  border: const OutlineInputBorder(),
                 ),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
@@ -2095,11 +2223,32 @@ String _formatRestTimer(int seconds) {
   return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
 }
 
-String _formatInputNumber(double value) {
+String _formatInputNumber(double value, {int fractionDigits = 10}) {
   if (value == value.roundToDouble()) {
     return value.toStringAsFixed(0);
   }
-  return value.toString();
+  final fixed = value.toStringAsFixed(fractionDigits);
+  return fixed
+      .replaceFirst(RegExp(r'0+$'), '')
+      .replaceFirst(RegExp(r'\.$'), '');
+}
+
+String _formatWeightForUnit(double kgValue, _WeightUnit unit) {
+  final displayValue = switch (unit) {
+    _WeightUnit.kg => kgValue,
+    _WeightUnit.lbs => kgValue * _kgToLbs,
+  };
+  return _formatInputNumber(
+    displayValue,
+    fractionDigits: unit == _WeightUnit.kg ? 10 : 2,
+  );
+}
+
+double _displayWeightToKg(double displayValue, _WeightUnit unit) {
+  return switch (unit) {
+    _WeightUnit.kg => displayValue,
+    _WeightUnit.lbs => displayValue / _kgToLbs,
+  };
 }
 
 String? _validateWeight(String? value) {

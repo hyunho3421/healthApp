@@ -87,6 +87,73 @@ void main() {
   );
 
   testWidgets(
+    'set weight unit selector converts kg display to lbs and saves kg value',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final exercises = await database.select(database.exercises).get();
+      final benchPress = exercises.firstWhere(
+        (exercise) => exercise.name == '벤치프레스',
+      );
+      final sessionId = await service.saveWorkout(
+        WorkoutDraft(
+          workoutDate: DateTime(2026, 5, 20),
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: benchPress.id,
+              sets: const [WorkoutSetDraft(weight: 100, reps: 5)],
+            ),
+          ],
+        ),
+      );
+      final record = await service.findWorkoutRecordForDateAndExercise(
+        date: DateTime(2026, 5, 20),
+        exerciseId: benchPress.id,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appDatabaseProvider.overrideWithValue(database)],
+          child: MaterialApp(
+            home: AddWorkoutScreen.editing(
+              editSessionId: sessionId,
+              editingEntry: record!.entries.single,
+              initialDate: record.session.workoutDate,
+              initialMemo: record.session.memo,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('무게 단위'), findsOneWidget);
+      expect(find.text('무게(kg)'), findsOneWidget);
+      expect(_fieldValues(tester), containsAllInOrder(['100', '5']));
+
+      await tester.tap(find.text('lbs'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('무게(lbs)'), findsOneWidget);
+      expect(_fieldValues(tester), containsAllInOrder(['220.46', '5']));
+
+      await tester.tap(find.text('수정 저장'));
+      await tester.pumpAndSettle();
+
+      final savedRecord = await service.findWorkoutRecordForDateAndExercise(
+        date: DateTime(2026, 5, 20),
+        exerciseId: benchPress.id,
+      );
+      expect(
+        savedRecord!.entries.single.sets.single.weight,
+        closeTo(100, 0.01),
+      );
+
+      await _settleToastTimers(tester);
+    },
+  );
+
+  testWidgets(
     'add flow locks exercise selection after loading an existing same-day record',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(900, 1400));
