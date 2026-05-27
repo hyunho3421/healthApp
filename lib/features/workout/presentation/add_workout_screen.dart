@@ -344,6 +344,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
   final _formKey = GlobalKey<FormState>();
   final _memoController = TextEditingController();
   final List<_SetInput> _sets = [];
+  _WeightUnit _selectedWeightUnit = _WeightUnit.kg;
 
   late int? _editSessionId;
   late WorkoutEntryRecord? _editingEntry;
@@ -402,11 +403,15 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
         .read(exerciseServiceProvider)
         .getExercises(bodyPartId: _selectedBodyPartId);
     _memoController.text = editingEntry.entry.memo ?? _initialMemo ?? '';
+    _selectedWeightUnit = _deriveWeightUnitForEntry(editingEntry);
     _sets.addAll(
       editingEntry.sets.map(
         (set) => _SetInput(
-          weight: _formatWeightForUnit(set.weight, set.weightUnit),
-          weightUnit: _weightUnitFromStorage(set.weightUnit),
+          weight: _formatWeightForUnit(
+            set.weight,
+            set.weightUnit,
+            _selectedWeightUnit.storageValue,
+          ),
           reps: set.reps.toString(),
           isWarmup: set.isWarmup,
         ),
@@ -486,6 +491,8 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
       if (existingRecord == null || existingRecord.entries.isEmpty) {
         if (_isEditMode) {
           _resetEntryInputsForSelectedExercise();
+        } else if (_selectedWeightUnit != _WeightUnit.kg) {
+          setState(() => _selectedWeightUnit = _WeightUnit.kg);
         }
         return;
       }
@@ -524,6 +531,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
       _isExerciseSelectionLockedFromAddFlow = false;
       _initialMemo = null;
       _memoController.clear();
+      _selectedWeightUnit = _WeightUnit.kg;
       _sets
         ..clear()
         ..add(_SetInput(isWarmup: preserveWarmup));
@@ -574,11 +582,15 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     for (final set in _sets) {
       set.dispose();
     }
+    final loadedWeightUnit = _deriveWeightUnitForEntry(entry);
     final loadedSets = entry.sets
         .map(
           (set) => _SetInput(
-            weight: _formatWeightForUnit(set.weight, set.weightUnit),
-            weightUnit: _weightUnitFromStorage(set.weightUnit),
+            weight: _formatWeightForUnit(
+              set.weight,
+              set.weightUnit,
+              loadedWeightUnit.storageValue,
+            ),
             reps: set.reps.toString(),
             isWarmup: set.isWarmup,
           ),
@@ -596,6 +608,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
       _selectedDate = date;
       _selectedBodyPartId = entry.bodyPart.id;
       _selectedExerciseId = entry.exercise.id;
+      _selectedWeightUnit = loadedWeightUnit;
       _exercisesById
         ..clear()
         ..[entry.exercise.id] = entry.exercise;
@@ -750,12 +763,11 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     setState(() => _sets.add(_SetInput()));
   }
 
-  void _selectWeightUnit(int index, _WeightUnit nextUnit) {
-    final set = _sets[index];
-    if (nextUnit == set.weightUnit) {
+  void _selectWeightUnit(_WeightUnit nextUnit) {
+    if (nextUnit == _selectedWeightUnit) {
       return;
     }
-    setState(() => set.weightUnit = nextUnit);
+    setState(() => _selectedWeightUnit = nextUnit);
   }
 
   void _removeSet(int index) {
@@ -801,7 +813,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                       : double.parse(set.weightController.text),
                   weightUnit: _isSelectedExerciseBodyweight
                       ? workoutWeightUnitKg
-                      : set.weightUnit.storageValue,
+                      : _selectedWeightUnit.storageValue,
                   reps: int.parse(set.repsController.text),
                   isWarmup: set.isWarmup,
                 ),
@@ -960,6 +972,13 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                 subtitle: isBodyweightExercise
                     ? '${_sets.length}개 세트 입력 중'
                     : '${_sets.length}개 세트 입력 중',
+                trailing: isBodyweightExercise
+                    ? null
+                    : _WeightUnitSelector(
+                        selectedUnit: _selectedWeightUnit,
+                        enabled: !_isSaving,
+                        onChanged: _selectWeightUnit,
+                      ),
                 child: Column(
                   children: [
                     for (var index = 0; index < _sets.length; index++)
@@ -969,8 +988,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                         input: _sets[index],
                         enabled: !_isSaving,
                         isBodyweightExercise: isBodyweightExercise,
-                        onWeightUnitChanged: (unit) =>
-                            _selectWeightUnit(index, unit),
+                        weightUnit: _selectedWeightUnit,
                         onWarmupChanged: (value) => setState(
                           () => _sets[index].isWarmup = value ?? false,
                         ),
@@ -1708,6 +1726,7 @@ class _FormSectionCard extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(18),
     this.childSpacing = 16,
+    this.trailing,
   });
 
   final String title;
@@ -1715,6 +1734,7 @@ class _FormSectionCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
   final double childSpacing;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -1733,6 +1753,8 @@ class _FormSectionCard extends StatelessWidget {
                     children: [
                       Text(
                         title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(fontWeight: FontWeight.w900),
                       ),
@@ -1740,6 +1762,8 @@ class _FormSectionCard extends StatelessWidget {
                         const SizedBox(height: 3),
                         Text(
                           subtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: const Color(0xFF6B7280)),
                         ),
@@ -1747,6 +1771,20 @@ class _FormSectionCard extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (trailing != null) ...[
+                  const SizedBox(width: 12),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 140),
+                    child: Align(
+                      alignment: Alignment.topRight,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.topRight,
+                        child: trailing!,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
             SizedBox(height: childSpacing),
@@ -2068,7 +2106,7 @@ class _SetInputRow extends StatelessWidget {
     required this.input,
     required this.enabled,
     required this.isBodyweightExercise,
-    required this.onWeightUnitChanged,
+    required this.weightUnit,
     required this.onWarmupChanged,
     required this.onRemove,
   });
@@ -2077,7 +2115,7 @@ class _SetInputRow extends StatelessWidget {
   final _SetInput input;
   final bool enabled;
   final bool isBodyweightExercise;
-  final ValueChanged<_WeightUnit> onWeightUnitChanged;
+  final _WeightUnit weightUnit;
   final ValueChanged<bool?> onWarmupChanged;
   final VoidCallback onRemove;
 
@@ -2105,12 +2143,6 @@ class _SetInputRow extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (!isBodyweightExercise)
-                  _WeightUnitSelector(
-                    selectedUnit: input.weightUnit,
-                    enabled: enabled,
-                    onChanged: onWeightUnitChanged,
-                  ),
               ],
             ),
             const SizedBox(height: 10),
@@ -2125,7 +2157,7 @@ class _SetInputRow extends StatelessWidget {
                       onTapOutside: (_) =>
                           FocusManager.instance.primaryFocus?.unfocus(),
                       decoration: InputDecoration(
-                        labelText: '무게(${input.weightUnit.label})',
+                        labelText: '무게(${weightUnit.label})',
                         border: const OutlineInputBorder(),
                       ),
                       keyboardType: const TextInputType.numberWithOptions(
@@ -2180,17 +2212,12 @@ class _SetInputRow extends StatelessWidget {
 }
 
 class _SetInput {
-  _SetInput({
-    String? weight,
-    String? reps,
-    this.weightUnit = _WeightUnit.kg,
-    this.isWarmup = false,
-  }) : weightController = TextEditingController(text: weight),
-       repsController = TextEditingController(text: reps);
+  _SetInput({String? weight, String? reps, this.isWarmup = false})
+    : weightController = TextEditingController(text: weight),
+      repsController = TextEditingController(text: reps);
 
   final TextEditingController weightController;
   final TextEditingController repsController;
-  _WeightUnit weightUnit;
   bool isWarmup;
 
   void dispose() {
@@ -2215,13 +2242,26 @@ String _formatInputNumber(double value, {int fractionDigits = 10}) {
       .replaceFirst(RegExp(r'\.$'), '');
 }
 
-String _formatWeightForUnit(double value, String? unit) {
+String _formatWeightForUnit(
+  double value,
+  String? sourceUnit,
+  String targetUnit,
+) {
+  final normalizedTargetUnit = normalizeWorkoutWeightUnit(targetUnit);
+  final displayValue = normalizedTargetUnit == workoutWeightUnitLbs
+      ? workoutWeightInKg(value, sourceUnit) * workoutKgToLbs
+      : workoutWeightInKg(value, sourceUnit);
   return _formatInputNumber(
-    value,
-    fractionDigits: normalizeWorkoutWeightUnit(unit) == workoutWeightUnitKg
-        ? 10
-        : 2,
+    displayValue,
+    fractionDigits: normalizedTargetUnit == workoutWeightUnitKg ? 10 : 2,
   );
+}
+
+_WeightUnit _deriveWeightUnitForEntry(WorkoutEntryRecord entry) {
+  if (entry.sets.isEmpty) {
+    return _WeightUnit.kg;
+  }
+  return _weightUnitFromStorage(entry.sets.first.weightUnit);
 }
 
 _WeightUnit _weightUnitFromStorage(String? value) {

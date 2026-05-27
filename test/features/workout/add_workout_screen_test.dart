@@ -87,9 +87,34 @@ void main() {
   );
 
   testWidgets(
+    'set header weight unit selector stays singular on narrow layouts',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(320, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appDatabaseProvider.overrideWithValue(database)],
+          child: const MaterialApp(home: AddWorkoutScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('세트'), findsOneWidget);
+      expect(find.text('kg'), findsOneWidget);
+      expect(find.text('lbs'), findsOneWidget);
+      expect(find.text('무게(kg)'), findsOneWidget);
+      expect(
+        tester.getCenter(find.text('kg')).dy,
+        closeTo(tester.getCenter(find.text('세트')).dy, 24),
+      );
+    },
+  );
+
+  testWidgets(
     'set weight unit selector does not mutate entered value and saves selected unit',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(900, 1400));
+      await tester.binding.setSurfaceSize(const Size(900, 1800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       final exercises = await database.select(database.exercises).get();
@@ -130,12 +155,27 @@ void main() {
       expect(find.text('무게(kg)'), findsOneWidget);
       expect(_fieldValues(tester), containsAllInOrder(['100', '5']));
 
+      await tester.tap(find.text('세트 추가'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField).at(2), '80');
+      await tester.enterText(find.byType(TextFormField).at(3), '6');
+      await tester.pumpAndSettle();
+
+      expect(find.text('무게(kg)'), findsNWidgets(2));
+      expect(find.text('kg'), findsOneWidget);
+      expect(find.text('lbs'), findsOneWidget);
+      expect(
+        tester.getCenter(find.text('kg')).dy,
+        closeTo(tester.getCenter(find.text('세트')).dy, 24),
+      );
+
       await tester.tap(find.text('lbs'));
       await tester.pumpAndSettle();
 
-      expect(find.text('무게(lbs)'), findsOneWidget);
-      expect(_fieldValues(tester), containsAllInOrder(['100', '5']));
+      expect(find.text('무게(lbs)'), findsNWidgets(2));
+      expect(_fieldValues(tester), containsAllInOrder(['100', '5', '80', '6']));
 
+      await tester.ensureVisible(find.text('수정 저장'));
       await tester.tap(find.text('수정 저장'));
       await tester.pumpAndSettle();
 
@@ -143,8 +183,42 @@ void main() {
         date: DateTime(2026, 5, 20),
         exerciseId: benchPress.id,
       );
-      expect(savedRecord!.entries.single.sets.single.weight, 100);
-      expect(savedRecord.entries.single.sets.single.weightUnit, 'lbs');
+      final savedSets = savedRecord!.entries.single.sets;
+      expect(savedSets, hasLength(2));
+      expect(savedSets.map((set) => set.weight), [100, 80]);
+      expect(savedSets.map((set) => set.weightUnit), ['lbs', 'lbs']);
+
+      await _settleToastTimers(tester);
+    },
+  );
+
+  testWidgets(
+    'add flow resets shared weight unit to kg when selected exercise has no same-day record',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appDatabaseProvider.overrideWithValue(database)],
+          child: const MaterialApp(home: AddWorkoutScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _selectPickerOption(tester, '운동 부위 선택', '가슴');
+      await _selectPickerOption(tester, '운동 선택', '벤치프레스');
+
+      expect(find.text('무게(kg)'), findsOneWidget);
+
+      await tester.tap(find.text('lbs'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('무게(lbs)'), findsOneWidget);
+
+      await _selectExercise(tester, '벤치프레스', '인클라인 벤치프레스');
+
+      expect(find.text('무게(kg)'), findsOneWidget);
 
       await _settleToastTimers(tester);
     },
