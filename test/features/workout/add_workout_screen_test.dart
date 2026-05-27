@@ -43,33 +43,46 @@ void main() {
 
       expect(find.text('쉬는시간'), findsOneWidget);
       expect(find.text('0:00'), findsOneWidget);
-      expect(find.text('0초'), findsOneWidget);
+      expect(find.text('0초'), findsNothing);
+      expect(find.text('시작'), findsNothing);
+      expect(find.text('초기화'), findsNothing);
+      expect(tester.widget<Text>(find.text('0:00')).semanticsLabel, '쉬는시간 0초');
+
+      final startButton = find.byTooltip('시작');
+      final resetButton = find.byTooltip('초기화');
+      expect(startButton, findsOneWidget);
+      expect(resetButton, findsOneWidget);
+      expect(tester.getSize(startButton), tester.getSize(resetButton));
 
       final restTimerOffset = tester.getTopLeft(find.text('쉬는시간')).dy;
       final setsOffset = tester.getTopLeft(find.text('세트')).dy;
       expect(restTimerOffset, lessThan(setsOffset));
 
-      await tester.tap(find.text('시작'));
+      await tester.tap(startButton);
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
 
       expect(find.text('측정 중'), findsOneWidget);
       expect(find.text('0:02'), findsOneWidget);
-      expect(find.text('2초'), findsOneWidget);
+      expect(find.text('2초'), findsNothing);
+      expect(find.text('일시정지'), findsNothing);
+      expect(tester.widget<Text>(find.text('0:02')).semanticsLabel, '쉬는시간 2초');
 
-      await tester.tap(find.text('일시정지'));
+      await tester.tap(find.byTooltip('일시정지'));
       await tester.pump();
       await tester.pump(const Duration(seconds: 2));
 
       expect(find.text('대기 중'), findsOneWidget);
       expect(find.text('0:02'), findsOneWidget);
-      expect(find.text('2초'), findsOneWidget);
+      expect(find.text('2초'), findsNothing);
+      expect(tester.widget<Text>(find.text('0:02')).semanticsLabel, '쉬는시간 2초');
 
-      await tester.tap(find.text('초기화'));
+      await tester.tap(resetButton);
       await tester.pump();
 
       expect(find.text('0:00'), findsOneWidget);
-      expect(find.text('0초'), findsOneWidget);
+      expect(find.text('0초'), findsNothing);
+      expect(tester.widget<Text>(find.text('0:00')).semanticsLabel, '쉬는시간 0초');
     },
   );
 
