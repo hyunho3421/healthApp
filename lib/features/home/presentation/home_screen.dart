@@ -13,6 +13,7 @@ import '../../../core/db/seed/workout_seed_data.dart';
 import '../../../core/formatters/metric_number_formatter.dart';
 import '../../../core/models/exercise_type.dart';
 import '../../../core/widgets/centered_toast.dart';
+import '../../profile/presentation/profile_settings_screen.dart';
 import '../../profile/providers/user_profile_providers.dart';
 import '../../stats/presentation/stats_screen.dart';
 import '../../workout/models/workout_record.dart';
@@ -86,6 +87,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ).push(MaterialPageRoute<void>(builder: (_) => const StatsScreen()));
   }
 
+  Future<void> _openProfile() async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const ProfileSettingsScreen()),
+    );
+  }
+
   Future<void> _openWorkoutRecords({DateTime? focusedDate}) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -140,9 +147,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 children: [
                   _WeeklyBodyStatusCard(
                     records: weeklyRecords,
+                    monthlyRecords: monthlyRecords,
                     totalSetCount: summary?.totalSetCount ?? 0,
+                    onAddTap: _openAddWorkout,
                     onRecordsTap: _openWorkoutRecords,
                     onStatsTap: _openStats,
+                    onProfileTap: _openProfile,
                   ),
                   _WeeklyBodyPartSummary(
                     records: weeklyRecords,
@@ -576,18 +586,175 @@ class _HomeSummary {
   final int totalSetCount;
 }
 
+class _HomeFitnessHeroHeader extends StatelessWidget {
+  const _HomeFitnessHeroHeader({
+    required this.weekLabel,
+    required this.onAddTap,
+    required this.onProfileTap,
+  });
+
+  final String weekLabel;
+  final VoidCallback onAddTap;
+  final VoidCallback onProfileTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF3182F6), Color(0xFF06B6D4)],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '오늘 운동, 30초 만에 기록',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            height: 1.15,
+                          ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '$weekLabel · 부위 균형과 성장 흐름을 한눈에 확인하세요.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.82),
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              IconButton.filledTonal(
+                onPressed: onProfileTap,
+                icon: const Icon(Icons.person_outline_rounded),
+                tooltip: '프로필 설정',
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.white.withValues(alpha: 0.16),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.square(44),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: onAddTap,
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('빠른 기록 시작'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: colorScheme.primary,
+              minimumSize: const Size.fromHeight(50),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeMetricTile extends StatelessWidget {
+  const _HomeMetricTile({
+    required this.label,
+    required this.value,
+    required this.caption,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final String caption;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 94),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FBFF),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE8EEF6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: const Color(0xFF6B7280),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              maxLines: 1,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            caption,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: const Color(0xFF9CA3AF),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _WeeklyBodyStatusCard extends StatelessWidget {
   const _WeeklyBodyStatusCard({
     required this.records,
+    required this.monthlyRecords,
     required this.totalSetCount,
+    required this.onAddTap,
     required this.onRecordsTap,
     required this.onStatsTap,
+    required this.onProfileTap,
   });
 
   final List<WorkoutRecord> records;
+  final List<WorkoutRecord> monthlyRecords;
   final int totalSetCount;
+  final VoidCallback onAddTap;
   final VoidCallback onRecordsTap;
   final VoidCallback onStatsTap;
+  final VoidCallback onProfileTap;
 
   @override
   Widget build(BuildContext context) {
@@ -605,6 +772,21 @@ class _WeeklyBodyStatusCard extends StatelessWidget {
         .length;
     final weekLabel =
         '${DateFormat('M.d').format(weekStart)} - ${DateFormat('M.d').format(weekEnd.subtract(const Duration(days: 1)))}';
+    final weeklyWorkoutDays = {
+      for (final record in records) _dateKey(record.session.workoutDate),
+    }.length;
+    final monthlyWorkoutDays = {
+      for (final record in monthlyRecords) _dateKey(record.session.workoutDate),
+    }.length;
+    final weeklySetCount = records.fold<int>(
+      0,
+      (sum, record) =>
+          sum +
+          record.entries.fold<int>(
+            0,
+            (entrySum, entry) => entrySum + entry.sets.length,
+          ),
+    );
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
@@ -626,6 +808,51 @@ class _WeeklyBodyStatusCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _HomeFitnessHeroHeader(
+              weekLabel: weekLabel,
+              onAddTap: onAddTap,
+              onProfileTap: onProfileTap,
+            ),
+            const SizedBox(height: 16),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final tileWidth = (constraints.maxWidth - 16) / 3;
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    SizedBox(
+                      width: tileWidth,
+                      child: _HomeMetricTile(
+                        label: '이번 주',
+                        value: '$weeklyWorkoutDays일',
+                        caption: '운동일',
+                        color: const Color(0xFF3182F6),
+                      ),
+                    ),
+                    SizedBox(
+                      width: tileWidth,
+                      child: _HomeMetricTile(
+                        label: '세트',
+                        value: '$weeklySetCount개',
+                        caption: '주간 입력',
+                        color: const Color(0xFF10B981),
+                      ),
+                    ),
+                    SizedBox(
+                      width: tileWidth,
+                      child: _HomeMetricTile(
+                        label: '월간',
+                        value: '$monthlyWorkoutDays일',
+                        caption: '운동일',
+                        color: const Color(0xFF8B5CF6),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 18),
             Row(
               children: [
                 Container(

@@ -512,6 +512,10 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
   }
 
   void _resetEntryInputsForSelectedExercise() {
+    final preserveWarmup =
+        _sets.isNotEmpty &&
+        _sets.first.isWarmup &&
+        _selectedBodyPartId != _editingEntry?.bodyPart.id;
     for (final set in _sets) {
       set.dispose();
     }
@@ -521,7 +525,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
       _memoController.clear();
       _sets
         ..clear()
-        ..add(_SetInput());
+        ..add(_SetInput(isWarmup: preserveWarmup));
     });
   }
 
@@ -833,6 +837,10 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
         child: Form(
           key: _formKey,
           child: ListView(
+            // Widget tests and assistive technologies need stable access to the
+            // complete single-page form even when the redesigned cards push set
+            // inputs below the initial viewport on small screens.
+            cacheExtent: 5000,
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             children: [
               _WorkoutFormHero(

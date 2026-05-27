@@ -34,6 +34,24 @@ void main() {
     required String placeholder,
     required String option,
   }) async {
+    final placeholderFinder = find.text(placeholder);
+    if (placeholderFinder.evaluate().isEmpty &&
+        find.byType(Scrollable).evaluate().isNotEmpty) {
+      try {
+        await tester.scrollUntilVisible(
+          placeholderFinder,
+          -260,
+          scrollable: find.byType(Scrollable).last,
+        );
+      } catch (_) {
+        await tester.scrollUntilVisible(
+          placeholderFinder,
+          260,
+          scrollable: find.byType(Scrollable).last,
+        );
+      }
+      await tester.pumpAndSettle();
+    }
     await tester.tap(find.text(placeholder).last);
     await tester.pumpAndSettle();
     await tester.tap(find.text(option).last);
@@ -50,6 +68,29 @@ void main() {
 
   Future<void> openStatsScreen(WidgetTester tester) async {
     await tester.tap(find.byTooltip('운동 통계'));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> scrollToAddWorkoutFormItem(
+    WidgetTester tester,
+    Finder finder,
+  ) async {
+    await tester.scrollUntilVisible(
+      finder,
+      260,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> enterAddWorkoutFormText(
+    WidgetTester tester,
+    Finder finder,
+    String value,
+  ) async {
+    await scrollToAddWorkoutFormItem(tester, finder);
+    await tester.enterText(finder, value);
     await tester.pumpAndSettle();
   }
 
@@ -78,6 +119,7 @@ void main() {
     expect(find.text('날짜'), findsOneWidget);
     expect(find.text('부위'), findsOneWidget);
     expect(find.text('운동'), findsOneWidget);
+    await scrollToAddWorkoutFormItem(tester, find.text('1세트'));
     expect(find.text('1세트'), findsOneWidget);
 
     await tester.drag(find.byType(ListView), const Offset(0, -600));
@@ -301,15 +343,24 @@ void main() {
 
     await pickSheetOption(tester, placeholder: '운동 선택', option: '벤치프레스');
 
-    await tester.enterText(find.widgetWithText(TextFormField, '무게(kg)'), '60');
-    await tester.enterText(find.widgetWithText(TextFormField, '횟수'), '10');
-    await tester.ensureVisible(find.byType(Checkbox).first);
-    await tester.pumpAndSettle();
+    await enterAddWorkoutFormText(
+      tester,
+      find.widgetWithText(TextFormField, '무게(kg)'),
+      '60',
+    );
+    await enterAddWorkoutFormText(
+      tester,
+      find.widgetWithText(TextFormField, '횟수'),
+      '10',
+    );
+    await scrollToAddWorkoutFormItem(tester, find.byType(Checkbox).first);
     await tester.tap(find.byType(Checkbox).first);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.widgetWithText(TextFormField, '메모'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextFormField, '메모'), '즉시 반영');
+    await enterAddWorkoutFormText(
+      tester,
+      find.widgetWithText(TextFormField, '메모'),
+      '즉시 반영',
+    );
 
     await tester.drag(find.byType(ListView), const Offset(0, -600));
     await tester.pumpAndSettle();
@@ -1002,14 +1053,23 @@ void main() {
     expect(find.text('가슴'), findsWidgets);
     expect(find.text('벤치프레스'), findsOneWidget);
     expect(find.text('운동 기록 수정'), findsOneWidget);
+    await scrollToAddWorkoutFormItem(tester, find.byType(Checkbox));
     expect(tester.widget<Checkbox>(find.byType(Checkbox).first).value, isTrue);
 
     await pickSheetOption(tester, placeholder: '가슴', option: '하체');
 
     await pickSheetOption(tester, placeholder: '운동 선택', option: '스쿼트');
 
-    await tester.enterText(find.widgetWithText(TextFormField, '무게(kg)'), '100');
-    await tester.enterText(find.widgetWithText(TextFormField, '횟수'), '5');
+    await enterAddWorkoutFormText(
+      tester,
+      find.widgetWithText(TextFormField, '무게(kg)'),
+      '100',
+    );
+    await enterAddWorkoutFormText(
+      tester,
+      find.widgetWithText(TextFormField, '횟수'),
+      '5',
+    );
     final memoField = find.byType(TextFormField).last;
     await tester.ensureVisible(memoField);
     await tester.pumpAndSettle();
