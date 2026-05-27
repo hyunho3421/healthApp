@@ -921,7 +921,9 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
               const SizedBox(height: 14),
               _FormSectionCard(
                 title: '쉬는시간',
-                subtitle: '세트 사이 시간을 초 단위로 확인하세요.',
+                subtitle: '',
+                padding: const EdgeInsets.all(14),
+                childSpacing: 10,
                 child: _RestTimerPanel(
                   elapsedSeconds: _restElapsedSeconds,
                   isRunning: _isRestTimerRunning,
@@ -1565,83 +1567,96 @@ class _RestTimerPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FBFF),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE1E8F2)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F2FF),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(Icons.timer_outlined, color: colorScheme.primary),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isRunning ? '측정 중' : '대기 중',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: const Color(0xFF6B7280),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _formatRestTimer(elapsedSeconds),
-                      semanticsLabel: '쉬는시간 $elapsedSeconds초',
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(
-                            color: const Color(0xFF111827),
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -0.4,
-                          ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '$elapsedSeconds초',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF6B7280),
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8F2FF),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              Icons.timer_outlined,
+              color: colorScheme.primary,
+              size: 20,
+            ),
           ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isRunning ? '측정 중' : '대기 중',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: const Color(0xFF6B7280),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  _formatRestTimer(elapsedSeconds),
+                  semanticsLabel: '쉬는시간 $elapsedSeconds초',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: const Color(0xFF111827),
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Semantics(
+            button: true,
+            enabled: enabled,
+            label: isRunning ? '쉬는시간 일시정지' : '쉬는시간 시작',
+            child: Tooltip(
+              message: isRunning ? '일시정지' : '시작',
+              child: SizedBox.square(
+                dimension: 42,
+                child: FilledButton(
                   onPressed: enabled ? (isRunning ? onPause : onStart) : null,
-                  icon: Icon(
+                  style: FilledButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size.square(42),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Icon(
                     isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
                   ),
-                  label: Text(isRunning ? '일시정지' : '시작'),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
+            ),
+          ),
+          const SizedBox(width: 8),
+          Semantics(
+            button: true,
+            enabled: enabled,
+            label: '쉬는시간 초기화',
+            child: Tooltip(
+              message: '초기화',
+              child: SizedBox.square(
+                dimension: 42,
+                child: OutlinedButton(
                   onPressed: enabled ? onReset : null,
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('초기화'),
+                  style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size.square(42),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Icon(Icons.refresh_rounded),
                 ),
               ),
-            ],
+            ),
           ),
         ],
       ),
@@ -1655,18 +1670,22 @@ class _FormSectionCard extends StatelessWidget {
     required this.subtitle,
     required this.child,
     this.trailing,
+    this.padding = const EdgeInsets.all(18),
+    this.childSpacing = 16,
   });
 
   final String title;
   final String subtitle;
   final Widget child;
   final Widget? trailing;
+  final EdgeInsetsGeometry padding;
+  final double childSpacing;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: padding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1682,20 +1701,21 @@ class _FormSectionCard extends StatelessWidget {
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(fontWeight: FontWeight.w900),
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        subtitle,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF6B7280),
+                      if (subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          subtitle,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: const Color(0xFF6B7280)),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
                 ?trailing,
               ],
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: childSpacing),
             child,
           ],
         ),
