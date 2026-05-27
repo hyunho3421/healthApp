@@ -12,6 +12,7 @@ import '../../../core/db/app_database.dart';
 import '../../../core/db/seed/workout_seed_data.dart';
 import '../../../core/formatters/metric_number_formatter.dart';
 import '../../../core/models/exercise_type.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/centered_toast.dart';
 import '../../profile/providers/user_profile_providers.dart';
 import '../../stats/presentation/stats_screen.dart';
@@ -612,14 +613,13 @@ class _WeeklyBodyStatusCard extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: const Color(0xFFE8EEF6)),
+          gradient: AppTheme.heroGradient,
+          borderRadius: BorderRadius.circular(30),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF111827).withValues(alpha: 0.05),
-              blurRadius: 24,
-              offset: const Offset(0, 12),
+              color: AppTheme.primaryDark.withValues(alpha: 0.18),
+              blurRadius: 28,
+              offset: const Offset(0, 16),
             ),
           ],
         ),
@@ -632,12 +632,12 @@ class _WeeklyBodyStatusCard extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE8F2FF),
+                    color: Colors.white.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: const Icon(
                     Icons.accessibility_new_rounded,
-                    color: Color(0xFF3182F6),
+                    color: Colors.white,
                     size: 28,
                   ),
                 ),
@@ -649,6 +649,7 @@ class _WeeklyBodyStatusCard extends StatelessWidget {
                       Text(
                         '이번 주 부위별 운동',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: Colors.white,
                           fontWeight: FontWeight.w900,
                           letterSpacing: -0.4,
                         ),
@@ -657,7 +658,7 @@ class _WeeklyBodyStatusCard extends StatelessWidget {
                       Text(
                         weekLabel,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          color: Colors.white.withValues(alpha: 0.72),
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -666,7 +667,10 @@ class _WeeklyBodyStatusCard extends StatelessWidget {
                 ),
                 IconButton(
                   onPressed: onStatsTap,
-                  icon: const Icon(Icons.bar_chart_rounded),
+                  icon: const Icon(
+                    Icons.bar_chart_rounded,
+                    color: Colors.white,
+                  ),
                   tooltip: '운동 통계',
                 ),
               ],
@@ -697,7 +701,7 @@ class _WeeklyBodyStatusCard extends StatelessWidget {
                         ? '아직 이번 주 운동 기록이 없어요.'
                         : '$trainedPartCount개 부위를 이번 주에 자극했어요.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF4B5563),
+                      color: Colors.white.withValues(alpha: 0.86),
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -706,13 +710,14 @@ class _WeeklyBodyStatusCard extends StatelessWidget {
                   onPressed: onRecordsTap,
                   icon: const Icon(Icons.event_note_rounded, size: 18),
                   label: const Text('기록 보기'),
+                  style: TextButton.styleFrom(foregroundColor: Colors.white),
                 ),
               ],
             ),
             Text(
               '누적 세트 $totalSetCount개',
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: const Color(0xFF9CA3AF),
+                color: Colors.white.withValues(alpha: 0.60),
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -763,7 +768,7 @@ class _BodyMapFigureState extends State<_BodyMapFigure> {
           (_bodyMapReferenceSize.height + _bodyMapFigureVerticalLabelPadding),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFFF6F9FC),
+          color: Colors.white.withValues(alpha: 0.92),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: const Color(0xFFE8EEF6)),
         ),
@@ -1636,7 +1641,7 @@ class _BodyPartLegendDot extends StatelessWidget {
         Text(
           label,
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: const Color(0xFF6B7280),
+            color: Colors.white.withValues(alpha: 0.78),
             fontWeight: FontWeight.w700,
           ),
         ),

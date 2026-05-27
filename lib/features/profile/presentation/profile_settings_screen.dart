@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/formatters/metric_number_formatter.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/centered_toast.dart';
 import '../providers/user_profile_providers.dart';
 
@@ -80,8 +81,15 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                     Container(
                       padding: const EdgeInsets.all(22),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF111827),
-                        borderRadius: BorderRadius.circular(28),
+                        gradient: AppTheme.heroGradient,
+                        borderRadius: BorderRadius.circular(30),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.primaryDark.withValues(alpha: 0.18),
+                            blurRadius: 28,
+                            offset: const Offset(0, 16),
+                          ),
+                        ],
                       ),
                       child: Row(
                         children: [

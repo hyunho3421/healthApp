@@ -1027,13 +1027,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1500));
     expect(find.text('스쿼트'), findsOneWidget);
     expect(find.text('하체'), findsWidgets);
-    expect(find.text('워밍업 1세트'), findsOneWidget);
+    expect(find.text('워밍업 1세트'), findsNothing);
     expect(find.text('500kg'), findsWidgets);
     expect(find.textContaining('kcal'), findsWidgets);
     final updatedRecord = (await WorkoutService(
       WorkoutRepository(database),
     ).getWorkoutRecords()).single.entries.single;
-    expect(updatedRecord.sets.single.isWarmup, isTrue);
+    expect(updatedRecord.sets.single.isWarmup, isFalse);
     expect(find.text('수정 후 메모'), findsOneWidget);
     expect(find.text('벤치프레스'), findsNothing);
     expect(find.text('수정 전 메모'), findsNothing);

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/db/app_database.dart';
 import '../../../core/formatters/metric_number_formatter.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../exercise/providers/exercise_providers.dart';
 import '../models/exercise_stats_period.dart';
 import '../models/favorite_exercise_stats.dart';
@@ -277,8 +278,15 @@ class _StatsHero extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: const Color(0xFF111827),
-        borderRadius: BorderRadius.circular(28),
+        gradient: AppTheme.heroGradient,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryDark.withValues(alpha: 0.18),
+            blurRadius: 28,
+            offset: const Offset(0, 16),
+          ),
+        ],
       ),
       child: Row(
         children: [

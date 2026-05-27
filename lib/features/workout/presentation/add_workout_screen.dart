@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../core/db/app_database.dart';
 import '../../../core/db/seed/workout_seed_data.dart';
 import '../../../core/models/exercise_type.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/centered_toast.dart';
 import '../../exercise/providers/exercise_providers.dart';
 import '../models/workout_draft.dart';
@@ -918,6 +919,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                   ],
                 ),
               ),
+
               const SizedBox(height: 14),
               _FormSectionCard(
                 title: '쉬는시간',
@@ -1150,7 +1152,7 @@ class _ExercisePickerFieldBody extends StatelessWidget {
           onTap: () => _openPicker(context),
           borderRadius: BorderRadius.circular(18),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: enabled ? Colors.white : const Color(0xFFF3F6FA),
               borderRadius: BorderRadius.circular(18),
@@ -1461,81 +1463,83 @@ class _WorkoutFormHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF111827),
-        borderRadius: BorderRadius.circular(28),
+        gradient: AppTheme.heroGradient,
+        borderRadius: BorderRadius.circular(30),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
+            color: AppTheme.primaryDark.withValues(alpha: 0.18),
+            blurRadius: 28,
+            offset: const Offset(0, 16),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            title,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w900,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.72),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            subtitle,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.white.withValues(alpha: 0.72),
-            ),
-          ),
-          const SizedBox(height: 18),
+          const SizedBox(width: 10),
           InkWell(
             onTap: onPickDate,
             borderRadius: BorderRadius.circular(18),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
               ),
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
                     isDateLocked
                         ? Icons.lock_outline_rounded
                         : Icons.calendar_today_rounded,
                     color: isDateLocked ? Colors.white70 : colorScheme.primary,
+                    size: 18,
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          isDateLocked ? '날짜 · 수정 불가' : '날짜',
-                          style: Theme.of(context).textTheme.labelSmall
-                              ?.copyWith(color: Colors.white70),
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isDateLocked ? '날짜 · 수정 불가' : '날짜',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.labelSmall?.copyWith(color: Colors.white70),
+                      ),
+                      Text(
+                        dateText,
+                        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          dateText,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                              ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  if (!isDateLocked)
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: Colors.white70,
-                    ),
                 ],
               ),
             ),
@@ -1670,8 +1674,8 @@ class _FormSectionCard extends StatelessWidget {
     required this.subtitle,
     required this.child,
     this.trailing,
-    this.padding = const EdgeInsets.all(18),
-    this.childSpacing = 16,
+    this.padding = const EdgeInsets.all(14),
+    this.childSpacing = 12,
   });
 
   final String title;
@@ -1821,7 +1825,7 @@ class _PickerFieldBody<T> extends StatelessWidget {
           onTap: () => _openPicker(context),
           borderRadius: BorderRadius.circular(18),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
               color: enabled ? Colors.white : const Color(0xFFF3F6FA),
               borderRadius: BorderRadius.circular(18),
@@ -2000,18 +2004,38 @@ class _SetInputRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FBFF),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 48,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 16),
-              child: Text('$setNumber세트'),
+          Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                '$setNumber세트',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ),
           ),
+          const SizedBox(width: 10),
           if (!isBodyweightExercise) ...[
             Expanded(
               child: TextFormField(
@@ -2019,10 +2043,7 @@ class _SetInputRow extends StatelessWidget {
                 enabled: enabled,
                 onTapOutside: (_) =>
                     FocusManager.instance.primaryFocus?.unfocus(),
-                decoration: const InputDecoration(
-                  labelText: '무게(kg)',
-                  border: OutlineInputBorder(),
-                ),
+                decoration: const InputDecoration(labelText: '무게(kg)'),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
@@ -2037,30 +2058,26 @@ class _SetInputRow extends StatelessWidget {
               enabled: enabled,
               onTapOutside: (_) =>
                   FocusManager.instance.primaryFocus?.unfocus(),
-              decoration: const InputDecoration(
-                labelText: '횟수',
-                border: OutlineInputBorder(),
-              ),
+              decoration: const InputDecoration(labelText: '횟수'),
               keyboardType: TextInputType.number,
               validator: _validateReps,
             ),
           ),
-          SizedBox(
-            width: 56,
-            child: Column(
-              children: [
-                Text('워밍업', style: Theme.of(context).textTheme.labelSmall),
-                Checkbox(
-                  value: input.isWarmup,
-                  onChanged: enabled ? onWarmupChanged : null,
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: enabled ? onRemove : null,
-            icon: const Icon(Icons.delete_outline),
-            tooltip: '세트 삭제',
+          const SizedBox(width: 6),
+          Column(
+            children: [
+              Text('워밍업', style: Theme.of(context).textTheme.labelSmall),
+              Checkbox(
+                value: input.isWarmup,
+                onChanged: enabled ? onWarmupChanged : null,
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: enabled ? onRemove : null,
+                icon: const Icon(Icons.delete_outline_rounded),
+                tooltip: '세트 삭제',
+              ),
+            ],
           ),
         ],
       ),
