@@ -356,6 +356,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
   late Future<List<BodyPart>> _bodyPartsFuture;
   Future<List<Exercise>>? _exercisesFuture;
   final Map<int, Exercise> _exercisesById = {};
+  WorkoutEntryRecord? _previousExerciseEntry;
   int? _selectedBodyPartId;
   int? _selectedExerciseId;
   bool _isSaving = false;
@@ -392,7 +393,6 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     _bodyPartsFuture = ref.read(exerciseServiceProvider).getBodyParts();
 
     if (editingEntry == null) {
-      _sets.add(_SetInput());
       return;
     }
 
@@ -410,8 +410,9 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
           weight: _formatWeightForUnit(
             set.weight,
             set.weightUnit,
-            _selectedWeightUnit.storageValue,
+            set.weightUnit,
           ),
+          weightUnit: _weightUnitFromStorage(set.weightUnit),
           reps: set.reps.toString(),
           isWarmup: set.isWarmup,
         ),
@@ -441,7 +442,14 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     setState(() {
       _selectedBodyPartId = bodyPartId;
       _selectedExerciseId = null;
+      _previousExerciseEntry = null;
       _exercisesById.clear();
+      if (!_isEditMode) {
+        for (final set in _sets) {
+          set.dispose();
+        }
+        _sets.clear();
+      }
       _exercisesFuture = bodyPartId == null
           ? null
           : ref
@@ -457,7 +465,16 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     final lookupToken = ++_existingWorkoutLookupToken;
     final shouldLockExerciseSelectionIfExistingRecordLoads = !_isEditMode;
     _resetRestTimer();
-    setState(() => _selectedExerciseId = exerciseId);
+    setState(() {
+      _selectedExerciseId = exerciseId;
+      _previousExerciseEntry = null;
+      if (!_isEditMode) {
+        for (final set in _sets) {
+          set.dispose();
+        }
+        _sets.clear();
+      }
+    });
     if (exerciseId != null) {
       await _openExistingWorkoutEntryIfPresent(
         exerciseId: exerciseId,
@@ -494,6 +511,13 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
         } else if (_selectedWeightUnit != _WeightUnit.kg) {
           setState(() => _selectedWeightUnit = _WeightUnit.kg);
         }
+        if (!_isEditMode) {
+          await _loadPreviousExerciseEntryForAssistance(
+            exerciseId: exerciseId,
+            beforeDate: date,
+            lookupToken: lookupToken,
+          );
+        }
         return;
       }
       final existingEntry = existingRecord.entries.firstWhere(
@@ -519,6 +543,110 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     }
   }
 
+  Future<void> _loadPreviousExerciseEntryForAssistance({
+    required int exerciseId,
+    required DateTime beforeDate,
+    required int lookupToken,
+  }) async {
+    try {
+      final previousEntry = await ref
+          .read(workoutServiceProvider)
+          .findPreviousWorkoutEntryForExercise(
+            beforeDate: beforeDate,
+            exerciseId: exerciseId,
+          );
+      if (!mounted ||
+          lookupToken != _existingWorkoutLookupToken ||
+          _selectedExerciseId != exerciseId ||
+          !_isSameCalendarDay(_selectedDate, beforeDate) ||
+          _isEditMode) {
+        return;
+      }
+      if (previousEntry == null || previousEntry.sets.isEmpty) {
+        return;
+      }
+      final shouldLoad = await _confirmPreviousExerciseEntryLoad(previousEntry);
+      if (!mounted ||
+          lookupToken != _existingWorkoutLookupToken ||
+          _selectedExerciseId != exerciseId ||
+          !_isSameCalendarDay(_selectedDate, beforeDate) ||
+          _isEditMode ||
+          shouldLoad != true) {
+        return;
+      }
+      _loadPreviousExerciseEntrySets(previousEntry);
+    } catch (error) {
+      if (mounted &&
+          lookupToken == _existingWorkoutLookupToken &&
+          _selectedExerciseId == exerciseId &&
+          !_isEditMode) {
+        CenteredToast.show(context, '이전 기록 확인에 실패했습니다: $error');
+      }
+    }
+  }
+
+  Future<bool?> _confirmPreviousExerciseEntryLoad(
+    WorkoutEntryRecord previousEntry,
+  ) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Expanded(child: Text('이전 기록 불러오기')),
+            IconButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              icon: const Icon(Icons.close_rounded),
+              tooltip: '닫기',
+            ),
+          ],
+        ),
+        content: Text(
+          '이전에 저장한 ${previousEntry.exercise.name} 기록이 있습니다.\n이전 세트의 무게와 단위를 불러올까요?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('건너뛰기'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('불러오기'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _loadPreviousExerciseEntrySets(WorkoutEntryRecord previousEntry) {
+    for (final set in _sets) {
+      set.dispose();
+    }
+    final loadedSets = previousEntry.sets.map((set) {
+      final weightUnit = _weightUnitFromStorage(set.weightUnit);
+      return _SetInput(
+        weight: _formatWeightForUnit(
+          set.weight,
+          set.weightUnit,
+          weightUnit.storageValue,
+        ),
+        repsPlaceholder: set.reps.toString(),
+        weightUnit: weightUnit,
+        isWarmup: set.isWarmup,
+      );
+    }).toList();
+    if (loadedSets.isEmpty) {
+      return;
+    }
+    setState(() {
+      _previousExerciseEntry = previousEntry;
+      _selectedWeightUnit = loadedSets.first.weightUnit;
+      _sets
+        ..clear()
+        ..addAll(loadedSets);
+    });
+  }
+
   void _resetEntryInputsForSelectedExercise() {
     final preserveWarmup =
         _sets.isNotEmpty &&
@@ -530,6 +658,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     setState(() {
       _isExerciseSelectionLockedFromAddFlow = false;
       _initialMemo = null;
+      _previousExerciseEntry = null;
       _memoController.clear();
       _selectedWeightUnit = _WeightUnit.kg;
       _sets
@@ -589,8 +718,9 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
             weight: _formatWeightForUnit(
               set.weight,
               set.weightUnit,
-              loadedWeightUnit.storageValue,
+              set.weightUnit,
             ),
+            weightUnit: _weightUnitFromStorage(set.weightUnit),
             reps: set.reps.toString(),
             isWarmup: set.isWarmup,
           ),
@@ -603,6 +733,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     setState(() {
       _editSessionId = sessionId;
       _editingEntry = entry;
+      _previousExerciseEntry = null;
       _isExerciseSelectionLockedFromAddFlow = lockExerciseSelection;
       _initialMemo = sessionMemo;
       _selectedDate = date;
@@ -636,6 +767,11 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     setState(() {
       _selectedBodyPartId = result.bodyPartId;
       _selectedExerciseId = result.exerciseId;
+      _previousExerciseEntry = null;
+      for (final set in _sets) {
+        set.dispose();
+      }
+      _sets.clear();
       _exercisesFuture = ref
           .read(exerciseServiceProvider)
           .getExercises(bodyPartId: result.bodyPartId);
@@ -666,6 +802,11 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
     setState(() {
       _selectedBodyPartId = result.bodyPartId;
       _selectedExerciseId = result.exerciseId;
+      _previousExerciseEntry = null;
+      for (final set in _sets) {
+        set.dispose();
+      }
+      _sets.clear();
       _exercisesFuture = ref
           .read(exerciseServiceProvider)
           .getExercises(bodyPartId: result.bodyPartId);
@@ -760,22 +901,43 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
   }
 
   void _addSet() {
-    setState(() => _sets.add(_SetInput()));
+    setState(() => _sets.add(_createNextSetInput()));
+  }
+
+  _SetInput _createNextSetInput() {
+    final previousSets = _previousExerciseEntry?.sets ?? const <WorkoutSet>[];
+    if (previousSets.isEmpty) {
+      return _SetInput(weightUnit: _selectedWeightUnit);
+    }
+    final priorSetIndex = _sets.length < previousSets.length
+        ? _sets.length
+        : previousSets.length - 1;
+    final priorSet = previousSets[priorSetIndex];
+    final weightUnit = _weightUnitFromStorage(priorSet.weightUnit);
+    return _SetInput(
+      weight: _formatWeightForUnit(
+        priorSet.weight,
+        priorSet.weightUnit,
+        weightUnit.storageValue,
+      ),
+      repsPlaceholder: priorSet.reps.toString(),
+      weightUnit: weightUnit,
+    );
   }
 
   void _selectWeightUnit(_WeightUnit nextUnit) {
     if (nextUnit == _selectedWeightUnit) {
       return;
     }
-    setState(() => _selectedWeightUnit = nextUnit);
+    setState(() {
+      _selectedWeightUnit = nextUnit;
+      for (final set in _sets) {
+        set.weightUnit = nextUnit;
+      }
+    });
   }
 
   void _removeSet(int index) {
-    if (_sets.length == 1) {
-      CenteredToast.show(context, '세트는 1개 이상 필요합니다.');
-      return;
-    }
-
     final removed = _sets.removeAt(index);
     removed.dispose();
     setState(() {});
@@ -792,6 +954,11 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
       CenteredToast.show(context, '운동을 선택해 주세요.');
       return;
     }
+    final savableSets = _sets.where((set) => set.hasSavableReps).toList();
+    if (savableSets.isEmpty) {
+      CenteredToast.show(context, '저장할 세트를 1개 이상 입력해 주세요.');
+      return;
+    }
 
     setState(() => _isSaving = true);
     try {
@@ -806,14 +973,14 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
           WorkoutEntryDraft(
             exerciseId: exerciseId,
             sets: [
-              for (final set in _sets)
+              for (final set in savableSets)
                 WorkoutSetDraft(
                   weight: _isSelectedExerciseBodyweight
                       ? 0
                       : double.parse(set.weightController.text),
                   weightUnit: _isSelectedExerciseBodyweight
                       ? workoutWeightUnitKg
-                      : _selectedWeightUnit.storageValue,
+                      : set.weightUnit.storageValue,
                   reps: int.parse(set.repsController.text),
                   isWarmup: set.isWarmup,
                 ),
@@ -988,7 +1155,7 @@ class _AddWorkoutScreenState extends ConsumerState<AddWorkoutScreen> {
                         input: _sets[index],
                         enabled: !_isSaving,
                         isBodyweightExercise: isBodyweightExercise,
-                        weightUnit: _selectedWeightUnit,
+                        weightUnit: _sets[index].weightUnit,
                         onWarmupChanged: (value) => setState(
                           () => _sets[index].isWarmup = value ?? false,
                         ),
@@ -2163,7 +2330,8 @@ class _SetInputRow extends StatelessWidget {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
-                      validator: _validateWeight,
+                      validator: (_) =>
+                          input.validateWeight(isBodyweightExercise),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -2174,12 +2342,13 @@ class _SetInputRow extends StatelessWidget {
                     enabled: enabled,
                     onTapOutside: (_) =>
                         FocusManager.instance.primaryFocus?.unfocus(),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: '횟수',
-                      border: OutlineInputBorder(),
+                      hintText: input.repsPlaceholder,
+                      border: const OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.number,
-                    validator: _validateReps,
+                    validator: input.validateReps,
                   ),
                 ),
                 SizedBox(
@@ -2212,13 +2381,37 @@ class _SetInputRow extends StatelessWidget {
 }
 
 class _SetInput {
-  _SetInput({String? weight, String? reps, this.isWarmup = false})
-    : weightController = TextEditingController(text: weight),
-      repsController = TextEditingController(text: reps);
+  _SetInput({
+    String? weight,
+    String? reps,
+    this.repsPlaceholder,
+    this.weightUnit = _WeightUnit.kg,
+    this.isWarmup = false,
+  }) : weightController = TextEditingController(text: weight),
+       repsController = TextEditingController(text: reps);
 
   final TextEditingController weightController;
   final TextEditingController repsController;
+  String? repsPlaceholder;
+  _WeightUnit weightUnit;
   bool isWarmup;
+
+  bool get hasSavableReps => repsController.text.trim().isNotEmpty;
+
+  String? validateWeight(bool isBodyweightExercise) {
+    if (!hasSavableReps || isBodyweightExercise) {
+      return null;
+    }
+    return _validateWeight(weightController.text);
+  }
+
+  String? validateReps(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) {
+      return null;
+    }
+    return _validateReps(trimmed);
+  }
 
   void dispose() {
     weightController.dispose();

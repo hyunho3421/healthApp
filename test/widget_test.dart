@@ -83,12 +83,22 @@ void main() {
     WidgetTester tester,
     Finder finder,
   ) async {
-    await tester.scrollUntilVisible(
-      finder,
-      260,
-      scrollable: find.byType(Scrollable).last,
-    );
+    final scrollables = find.byType(Scrollable);
+    if (scrollables.evaluate().isNotEmpty) {
+      await tester.scrollUntilVisible(
+        finder,
+        260,
+        scrollable: scrollables.last,
+      );
+    }
     await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> addWorkoutSetRow(WidgetTester tester) async {
+    final addSetButton = find.widgetWithText(OutlinedButton, '세트 추가');
+    await scrollToAddWorkoutFormItem(tester, addSetButton);
+    await tester.tap(addSetButton);
     await tester.pumpAndSettle();
   }
 
@@ -126,7 +136,8 @@ void main() {
     expect(find.text('날짜'), findsOneWidget);
     expect(find.text('부위'), findsOneWidget);
     expect(find.text('운동'), findsOneWidget);
-    await scrollToAddWorkoutFormItem(tester, find.text('1세트'));
+    expect(find.text('1세트'), findsNothing);
+    await addWorkoutSetRow(tester);
     expect(find.text('1세트'), findsOneWidget);
 
     await tester.drag(find.byType(ListView), const Offset(0, -600));
@@ -345,6 +356,8 @@ void main() {
     await pickSheetOption(tester, placeholder: '운동 부위 선택', option: '가슴');
 
     await pickSheetOption(tester, placeholder: '운동 선택', option: '벤치프레스');
+
+    await addWorkoutSetRow(tester);
 
     await enterAddWorkoutFormText(
       tester,

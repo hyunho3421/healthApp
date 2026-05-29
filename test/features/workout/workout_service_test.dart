@@ -285,6 +285,76 @@ void main() {
     },
   );
 
+  test(
+    'finds immediately previous exercise entry before a selected date',
+    () async {
+      final exercises = await database.select(database.exercises).get();
+      final benchPress = exercises.firstWhere(
+        (exercise) => exercise.name == '벤치프레스',
+      );
+      final squat = exercises.firstWhere((exercise) => exercise.name == '스쿼트');
+
+      await service.saveWorkout(
+        WorkoutDraft(
+          workoutDate: DateTime(2026, 5, 14),
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: benchPress.id,
+              sets: const [WorkoutSetDraft(weight: 50, reps: 12)],
+            ),
+          ],
+        ),
+      );
+      await service.saveWorkout(
+        WorkoutDraft(
+          workoutDate: DateTime(2026, 5, 15),
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: squat.id,
+              sets: const [WorkoutSetDraft(weight: 100, reps: 5)],
+            ),
+          ],
+        ),
+      );
+      await service.saveWorkout(
+        WorkoutDraft(
+          workoutDate: DateTime(2026, 5, 16),
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: benchPress.id,
+              sets: const [WorkoutSetDraft(weight: 60, reps: 10)],
+            ),
+          ],
+        ),
+      );
+      await service.saveWorkout(
+        WorkoutDraft(
+          workoutDate: DateTime(2026, 5, 17),
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: benchPress.id,
+              sets: const [WorkoutSetDraft(weight: 70, reps: 8)],
+            ),
+          ],
+        ),
+      );
+
+      final previous = await service.findPreviousWorkoutEntryForExercise(
+        beforeDate: DateTime(2026, 5, 17),
+        exerciseId: benchPress.id,
+      );
+      final missing = await service.findPreviousWorkoutEntryForExercise(
+        beforeDate: DateTime(2026, 5, 14),
+        exerciseId: benchPress.id,
+      );
+
+      expect(previous, isNotNull);
+      expect(previous!.sets.single.weight, 60);
+      expect(previous.sets.single.reps, 10);
+      expect(missing, isNull);
+    },
+  );
+
   test('deletes a workout entry and removes the empty session', () async {
     final benchPress = (await database.select(database.exercises).get())
         .firstWhere((exercise) => exercise.name == '벤치프레스');

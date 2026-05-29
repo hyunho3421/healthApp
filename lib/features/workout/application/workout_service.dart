@@ -75,6 +75,33 @@ class WorkoutService {
     return null;
   }
 
+  Future<WorkoutEntryRecord?> findPreviousWorkoutEntryForExercise({
+    required DateTime beforeDate,
+    required int exerciseId,
+  }) async {
+    if (exerciseId <= 0) {
+      throw ArgumentError.value(exerciseId, 'exerciseId', '유효하지 않은 운동입니다.');
+    }
+
+    final dayStart = DateTime(
+      beforeDate.year,
+      beforeDate.month,
+      beforeDate.day,
+    );
+    final records = await getWorkoutRecords(
+      to: dayStart,
+      exerciseId: exerciseId,
+    );
+    for (final record in records) {
+      for (final entry in record.entries) {
+        if (entry.exercise.id == exerciseId) {
+          return entry;
+        }
+      }
+    }
+    return null;
+  }
+
   Future<int> getWorkoutSetCount() => _repository.getWorkoutSetCount();
 
   Future<void> deleteSession(int sessionId) =>

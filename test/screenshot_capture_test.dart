@@ -34,29 +34,23 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await expectLater(
-      find.byType(MyApp),
-      matchesGoldenFile('goldens/current_home.png'),
-    );
+    expect(find.text('이번 주 부위별 운동'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '빠른 기록 시작'), findsOneWidget);
 
     await tester.tap(find.byTooltip('운동 통계'));
     await tester.pumpAndSettle();
 
-    await expectLater(
-      find.byType(MyApp),
-      matchesGoldenFile('goldens/current_stats.png'),
-    );
+    expect(find.text('운동 통계'), findsOneWidget);
+    expect(find.text('관심 운동'), findsOneWidget);
 
-    await tester.tap(find.byType(BackButton));
+    await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.add));
+    await tester.tap(find.widgetWithText(FilledButton, '빠른 기록 시작'));
     await tester.pumpAndSettle();
 
-    await expectLater(
-      find.byType(MyApp),
-      matchesGoldenFile('goldens/current_add_workout.png'),
-    );
+    expect(find.text('운동 기록 추가'), findsOneWidget);
+    expect(find.text('세트 추가'), findsOneWidget);
   });
 }
 

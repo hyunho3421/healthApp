@@ -103,6 +103,10 @@ void main() {
       expect(find.text('세트'), findsOneWidget);
       expect(find.text('kg'), findsOneWidget);
       expect(find.text('lbs'), findsOneWidget);
+
+      await tester.tap(find.text('세트 추가'));
+      await tester.pumpAndSettle();
+
       expect(find.text('무게(kg)'), findsOneWidget);
       expect(
         tester.getCenter(find.text('kg')).dy,
@@ -209,6 +213,12 @@ void main() {
       await _selectPickerOption(tester, '운동 부위 선택', '가슴');
       await _selectPickerOption(tester, '운동 선택', '벤치프레스');
 
+      expect(find.text('이전 기록 불러오기'), findsNothing);
+      expect(find.text('무게(kg)'), findsNothing);
+
+      await tester.tap(find.text('세트 추가'));
+      await tester.pumpAndSettle();
+
       expect(find.text('무게(kg)'), findsOneWidget);
 
       await tester.tap(find.text('lbs'));
@@ -218,7 +228,227 @@ void main() {
 
       await _selectExercise(tester, '벤치프레스', '인클라인 벤치프레스');
 
+      expect(find.text('무게(kg)'), findsNothing);
+
+      await tester.tap(find.text('세트 추가'));
+      await tester.pumpAndSettle();
+
       expect(find.text('무게(kg)'), findsOneWidget);
+
+      await _settleToastTimers(tester);
+    },
+  );
+
+  testWidgets(
+    'add flow imports previous exercise sets on confirmation without saving placeholder reps',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final today = DateTime.now();
+      final workoutDate = DateTime(today.year, today.month, today.day);
+      final previousDate = workoutDate.subtract(const Duration(days: 1));
+      final benchPress = (await database.select(database.exercises).get())
+          .firstWhere((exercise) => exercise.name == '벤치프레스');
+
+      await service.saveWorkout(
+        WorkoutDraft(
+          workoutDate: previousDate,
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: benchPress.id,
+              sets: const [
+                WorkoutSetDraft(
+                  weight: 100,
+                  reps: 5,
+                  weightUnit: workoutWeightUnitKg,
+                ),
+                WorkoutSetDraft(
+                  weight: 220,
+                  reps: 6,
+                  weightUnit: workoutWeightUnitLbs,
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appDatabaseProvider.overrideWithValue(database)],
+          child: const MaterialApp(home: AddWorkoutScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _selectPickerOption(tester, '운동 부위 선택', '가슴');
+      await _selectPickerOption(tester, '운동 선택', '벤치프레스');
+
+      expect(find.text('이전 기록 불러오기'), findsOneWidget);
+      expect(find.textContaining('이전에 저장한 벤치프레스 기록'), findsOneWidget);
+      await tester.tap(find.text('불러오기'));
+      await tester.pumpAndSettle();
+
+      var textFields = tester
+          .widgetList<TextField>(find.byType(TextField))
+          .toList();
+      expect(_fieldValues(tester), ['100', '', '220', '', '']);
+      expect(textFields[1].decoration?.hintText, '5');
+      expect(textFields[3].decoration?.hintText, '6');
+      expect(find.text('무게(kg)'), findsOneWidget);
+      expect(find.text('무게(lbs)'), findsOneWidget);
+
+      await tester.tap(find.text('세트 추가'));
+      await tester.pumpAndSettle();
+
+      textFields = tester
+          .widgetList<TextField>(find.byType(TextField))
+          .toList();
+      expect(_fieldValues(tester), ['100', '', '220', '', '220', '', '']);
+      expect(textFields[5].decoration?.hintText, '6');
+      expect(find.text('무게(lbs)'), findsNWidgets(2));
+
+      await tester.enterText(find.byType(TextFormField).at(1), '7');
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('저장'));
+      await tester.tap(find.text('저장'));
+      await tester.pumpAndSettle();
+
+      final savedRecord = await service.findWorkoutRecordForDateAndExercise(
+        date: workoutDate,
+        exerciseId: benchPress.id,
+      );
+      final savedSets = savedRecord!.entries.single.sets;
+      expect(savedSets, hasLength(1));
+      expect(savedSets.single.weight, 100);
+      expect(savedSets.single.weightUnit, workoutWeightUnitKg);
+      expect(savedSets.single.reps, 7);
+
+      await _settleToastTimers(tester);
+    },
+  );
+
+  testWidgets(
+    'add flow skips previous record import and starts with blank sets',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final today = DateTime.now();
+      final workoutDate = DateTime(today.year, today.month, today.day);
+      final previousDate = workoutDate.subtract(const Duration(days: 1));
+      final benchPress = (await database.select(database.exercises).get())
+          .firstWhere((exercise) => exercise.name == '벤치프레스');
+
+      await service.saveWorkout(
+        WorkoutDraft(
+          workoutDate: previousDate,
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: benchPress.id,
+              sets: const [WorkoutSetDraft(weight: 100, reps: 5)],
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appDatabaseProvider.overrideWithValue(database)],
+          child: const MaterialApp(home: AddWorkoutScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _selectPickerOption(tester, '운동 부위 선택', '가슴');
+      await _selectPickerOption(tester, '운동 선택', '벤치프레스');
+
+      expect(find.text('이전 기록 불러오기'), findsOneWidget);
+      await tester.tap(find.text('건너뛰기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('1세트'), findsNothing);
+      expect(find.text('무게(kg)'), findsNothing);
+      expect(_fieldValues(tester), ['']);
+
+      await tester.tap(find.text('세트 추가'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('1세트'), findsOneWidget);
+      expect(_fieldValues(tester), ['', '', '']);
+      expect(
+        tester
+            .widgetList<TextField>(find.byType(TextField))
+            .toList()[1]
+            .decoration
+            ?.hintText,
+        isNull,
+      );
+
+      await _settleToastTimers(tester);
+    },
+  );
+
+  testWidgets(
+    'add flow clears imported previous sets on exercise reselection and avoids duplicates',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 1800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final today = DateTime.now();
+      final workoutDate = DateTime(today.year, today.month, today.day);
+      final previousDate = workoutDate.subtract(const Duration(days: 1));
+      final benchPress = (await database.select(database.exercises).get())
+          .firstWhere((exercise) => exercise.name == '벤치프레스');
+
+      await service.saveWorkout(
+        WorkoutDraft(
+          workoutDate: previousDate,
+          entries: [
+            WorkoutEntryDraft(
+              exerciseId: benchPress.id,
+              sets: const [
+                WorkoutSetDraft(weight: 100, reps: 5),
+                WorkoutSetDraft(weight: 105, reps: 4),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [appDatabaseProvider.overrideWithValue(database)],
+          child: const MaterialApp(home: AddWorkoutScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _selectPickerOption(tester, '운동 부위 선택', '가슴');
+      await _selectPickerOption(tester, '운동 선택', '벤치프레스');
+      await tester.tap(find.text('불러오기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('1세트'), findsOneWidget);
+      expect(find.text('2세트'), findsOneWidget);
+      expect(_fieldValues(tester), ['100', '', '105', '', '']);
+
+      await _selectExercise(tester, '벤치프레스', '인클라인 벤치프레스');
+
+      expect(find.text('이전 기록 불러오기'), findsNothing);
+      expect(find.text('1세트'), findsNothing);
+      expect(find.text('무게(kg)'), findsNothing);
+      expect(_fieldValues(tester), ['']);
+
+      await _selectExercise(tester, '인클라인 벤치프레스', '벤치프레스');
+      await tester.tap(find.text('불러오기'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('1세트'), findsOneWidget);
+      expect(find.text('2세트'), findsOneWidget);
+      expect(find.text('3세트'), findsNothing);
+      expect(_fieldValues(tester), ['100', '', '105', '', '']);
 
       await _settleToastTimers(tester);
     },
