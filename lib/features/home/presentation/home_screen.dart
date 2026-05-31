@@ -508,6 +508,10 @@ String _formatWorkoutSetChip(WorkoutSet set) {
   return '${set.setNumber}세트 ${formatMetricNumber(set.weight)}$unit × ${set.reps}회';
 }
 
+int _workingSetCount(Iterable<WorkoutSet> sets) {
+  return sets.where((set) => !set.isWarmup).length;
+}
+
 Color _bodyPartStatusColor(int count) {
   if (count >= 3) {
     return const Color(0xFFEF4444);
@@ -785,7 +789,7 @@ class _WeeklyBodyStatusCard extends StatelessWidget {
           sum +
           record.entries.fold<int>(
             0,
-            (entrySum, entry) => entrySum + entry.sets.length,
+            (entrySum, entry) => entrySum + _workingSetCount(entry.sets),
           ),
     );
 
@@ -2621,7 +2625,7 @@ class _WorkoutRecordCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final entry = item.entry;
     final dateText = DateFormat('yyyy.MM.dd').format(item.date);
-    final setCount = entry.sets.length;
+    final setCount = _workingSetCount(entry.sets);
     final warmupSetCount = entry.sets.where((set) => set.isWarmup).length;
     final totalVolume = entry.sets.fold<double>(
       0,
@@ -2928,7 +2932,10 @@ _RecordDateSummaryItem _buildDateSummaryItem({
     bodyPartNames: bodyPartNames,
     totalVolume: totalVolume,
     entryCount: entryCount,
-    setCount: entries.fold<int>(0, (sum, entry) => sum + entry.sets.length),
+    setCount: entries.fold<int>(
+      0,
+      (sum, entry) => sum + _workingSetCount(entry.sets),
+    ),
     entries: entries,
   );
 }
